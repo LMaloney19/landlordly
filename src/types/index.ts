@@ -76,7 +76,6 @@ export type Tenant = {
   leaseEnd: string;
   monthlyRent: number | null;
   securityDeposit: number | null;
-  petName: string | null;
   petType: string | null;
 };
 

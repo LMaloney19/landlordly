@@ -35,7 +35,6 @@ type TenantEditDraft = {
   leaseEnd: string;
   monthlyRent: string;
   securityDeposit: string;
-  petName: string;
   petType: string;
 };
 
@@ -56,7 +55,6 @@ function draftFromTenant(tenant: Tenant): TenantEditDraft {
       tenant.securityDeposit !== null && tenant.securityDeposit !== undefined
         ? String(tenant.securityDeposit)
         : "",
-    petName: tenant.petName ?? "",
     petType: tenant.petType ?? "",
   };
 }
@@ -323,7 +321,7 @@ export function TenantsPageClient({
           lease_end: editDraft.leaseEnd,
           monthly_rent: monthlyRent,
           security_deposit: securityDeposit,
-          pet_name: editDraft.petName.trim() || null,
+          pet_name: null,
           pet_type: editDraft.petType.trim() || null,
         })
         .eq("id", editingTenant.id)
@@ -607,35 +605,20 @@ export function TenantsPageClient({
                     />
                   </label>
 
-                  <div className="rounded-lg border border-zinc-100 bg-zinc-50/80 p-4">
-                    <p className="text-sm font-medium text-zinc-700">Pet (optional)</p>
-                    <div className="mt-3 grid grid-cols-2 gap-3">
-                      <label className="block">
-                        <span className="text-xs text-zinc-500">Name</span>
-                        <input
-                          type="text"
-                          value={editDraft.petName}
-                          onChange={(event) =>
-                            updateEditDraft({ petName: event.target.value })
-                          }
-                          placeholder="Max"
-                          className={inputClass}
-                        />
-                      </label>
-                      <label className="block">
-                        <span className="text-xs text-zinc-500">Type</span>
-                        <input
-                          type="text"
-                          value={editDraft.petType}
-                          onChange={(event) =>
-                            updateEditDraft({ petType: event.target.value })
-                          }
-                          placeholder="Dog"
-                          className={inputClass}
-                        />
-                      </label>
-                    </div>
-                  </div>
+                  <label className="block">
+                    <span className="text-sm font-medium text-zinc-700">
+                      Pet type (optional)
+                    </span>
+                    <input
+                      type="text"
+                      value={editDraft.petType}
+                      onChange={(event) =>
+                        updateEditDraft({ petType: event.target.value })
+                      }
+                      placeholder="e.g. Dog, Cat"
+                      className={inputClass}
+                    />
+                  </label>
                 </fieldset>
 
                 {actionError ? (

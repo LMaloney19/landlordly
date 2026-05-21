@@ -85,15 +85,14 @@ function TenantPetControl({
   disabled: boolean;
 }) {
   const [isEditing, setIsEditing] = useState(false);
-  const [petName, setPetName] = useState(tenant.petName ?? "");
   const [petType, setPetType] = useState(tenant.petType ?? "");
   const [error, setError] = useState<string | null>(null);
   const [isSaving, startTransition] = useTransition();
 
   function savePet() {
-    const name = petName.trim();
-    if (!name) {
-      setError("Pet name is required.");
+    const type = petType.trim();
+    if (!type) {
+      setError("Pet type is required.");
       return;
     }
 
@@ -112,8 +111,8 @@ function TenantPetControl({
       const { data, error: saveError } = await supabase
         .from("tenants")
         .update({
-          pet_name: name,
-          pet_type: petType.trim() || null,
+          pet_name: null,
+          pet_type: type,
         })
         .eq("id", tenant.id)
         .eq("user_id", user.id)
@@ -122,7 +121,7 @@ function TenantPetControl({
 
       if (saveError || !data) {
         setError(
-          saveError?.message.includes("pet_name")
+          saveError?.message.includes("pet_type")
             ? "Run migration 20250516030000_tenant_deposit_pets.sql in Supabase."
             : (saveError?.message ?? "Could not save pet."),
         );
@@ -157,20 +156,18 @@ function TenantPetControl({
     });
   }
 
-  if (tenant.petName && !isEditing) {
+  if (tenant.petType && !isEditing) {
     return (
       <div className="flex flex-wrap items-center gap-2 border-t border-zinc-100 pt-3">
         <span className="inline-flex items-center gap-1.5 rounded-md bg-emerald-50 px-2.5 py-1 text-xs font-medium text-emerald-800 ring-1 ring-emerald-100">
           <Dog className="h-3.5 w-3.5" aria-hidden />
-          {tenant.petName}
-          {tenant.petType ? ` · ${tenant.petType}` : ""}
+          {tenant.petType}
         </span>
         <button
           type="button"
           disabled={disabled || isSaving}
           onClick={(e) => {
             e.stopPropagation();
-            setPetName(tenant.petName ?? "");
             setPetType(tenant.petType ?? "");
             setIsEditing(true);
           }}
@@ -192,17 +189,10 @@ function TenantPetControl({
         <div className="flex flex-wrap items-end gap-2">
           <input
             type="text"
-            value={petName}
-            onChange={(e) => setPetName(e.target.value)}
-            placeholder="Pet name"
-            className="min-w-[120px] flex-1 rounded-md border border-zinc-200 px-2.5 py-1.5 text-sm"
-          />
-          <input
-            type="text"
             value={petType}
             onChange={(e) => setPetType(e.target.value)}
-            placeholder="Type (e.g. Dog)"
-            className="w-28 rounded-md border border-zinc-200 px-2.5 py-1.5 text-sm"
+            placeholder="e.g. Dog, Cat"
+            className="min-w-[140px] flex-1 rounded-md border border-zinc-200 px-2.5 py-1.5 text-sm"
           />
           <button
             type="button"
@@ -216,9 +206,8 @@ function TenantPetControl({
             type="button"
             disabled={isSaving}
             onClick={() => {
-              if (tenant.petName) setIsEditing(false);
+              if (tenant.petType) setIsEditing(false);
               else {
-                setPetName("");
                 setPetType("");
                 setIsEditing(false);
               }
@@ -227,7 +216,7 @@ function TenantPetControl({
           >
             Cancel
           </button>
-          {tenant.petName ? (
+          {tenant.petType ? (
             <button
               type="button"
               disabled={isSaving}

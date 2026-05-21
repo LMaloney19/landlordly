@@ -37,8 +37,7 @@ export function rowToTenant(row: TenantRow): Tenant {
     monthlyRent: row.monthly_rent != null ? Number(row.monthly_rent) : null,
     securityDeposit:
       row.security_deposit != null ? Number(row.security_deposit) : null,
-    petName: row.pet_name ?? null,
-    petType: row.pet_type ?? null,
+    petType: row.pet_type?.trim() || row.pet_name?.trim() || null,
   };
 }
 

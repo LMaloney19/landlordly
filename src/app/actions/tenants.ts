@@ -19,7 +19,6 @@ export type TenantInput = {
   leaseEnd: string;
   monthlyRent?: number;
   securityDeposit?: number;
-  petName?: string;
   petType?: string;
 };
 
@@ -131,7 +130,7 @@ export async function createTenants(
     lease_end: input.leaseEnd,
     monthly_rent: input.monthlyRent ?? null,
     security_deposit: input.securityDeposit ?? null,
-    pet_name: input.petName?.trim() || null,
+    pet_name: null,
     pet_type: input.petType?.trim() || null,
   }));
 
