@@ -1,5 +1,10 @@
 import net from "node:net";
 
+// Vercel/CI may have ports open; never block remote builds.
+if (process.env.VERCEL === "1" || process.env.CI === "true") {
+  process.exit(0);
+}
+
 const PORTS = [3000, 3001, 3002, 3003];
 
 function portInUse(port) {
