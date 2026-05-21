@@ -15,6 +15,9 @@ export type TenantRow = {
   lease_start: string | null;
   lease_end: string;
   monthly_rent: number | null;
+  security_deposit?: number | null;
+  pet_name?: string | null;
+  pet_type?: string | null;
   created_at: string;
   archived_at?: string | null;
   properties: PropertyAddressFields | PropertyAddressFields[] | null;
@@ -32,7 +35,85 @@ export function rowToTenant(row: TenantRow): Tenant {
     leaseStart: row.lease_start,
     leaseEnd: row.lease_end,
     monthlyRent: row.monthly_rent != null ? Number(row.monthly_rent) : null,
+    securityDeposit:
+      row.security_deposit != null ? Number(row.security_deposit) : null,
+    petName: row.pet_name ?? null,
+    petType: row.pet_type ?? null,
   };
+}
+
+export type TenantPropertyGroup = {
+  propertyId: string;
+  propertyAddress: string;
+  units: TenantUnitGroup[];
+};
+
+export type TenantUnitGroup = {
+  unitLabel: string;
+  tenants: Tenant[];
+};
+
+/** Group tenants by property, then apartment/unit label. */
+export function groupTenantsByPropertyAndUnit(
+  tenants: Tenant[],
+  properties: { id: string; formattedAddress: string; units: { unitLabel: string }[] }[],
+): TenantPropertyGroup[] {
+  const propertyOrder = new Map(
+    properties.map((property, index) => [property.id, index]),
+  );
+
+  const byProperty = new Map<string, Tenant[]>();
+
+  for (const tenant of tenants) {
+    const list = byProperty.get(tenant.propertyId) ?? [];
+    list.push(tenant);
+    byProperty.set(tenant.propertyId, list);
+  }
+
+  const groups: TenantPropertyGroup[] = [];
+
+  for (const [propertyId, propertyTenants] of byProperty) {
+    const property = properties.find((p) => p.id === propertyId);
+    const address =
+      property?.formattedAddress ?? propertyTenants[0]?.propertyAddress ?? "Property";
+
+    const unitKeys = new Set<string>();
+    if (property) {
+      for (const unit of property.units) {
+        unitKeys.add(unit.unitLabel);
+      }
+    }
+    for (const tenant of propertyTenants) {
+      unitKeys.add(tenant.unitLabel?.trim() || "— No unit");
+    }
+
+    const sortedUnits = [...unitKeys].sort((a, b) => {
+      if (a === "— No unit") return 1;
+      if (b === "— No unit") return -1;
+      return a.localeCompare(b, undefined, { numeric: true });
+    });
+
+    const units: TenantUnitGroup[] = sortedUnits.map((unitLabel) => ({
+      unitLabel,
+      tenants: propertyTenants
+        .filter((tenant) => {
+          const label = tenant.unitLabel?.trim() || "— No unit";
+          return label === unitLabel;
+        })
+        .sort((a, b) => a.name.localeCompare(b.name)),
+    }));
+
+    groups.push({ propertyId, propertyAddress: address, units });
+  }
+
+  groups.sort((a, b) => {
+    const orderA = propertyOrder.get(a.propertyId) ?? 999;
+    const orderB = propertyOrder.get(b.propertyId) ?? 999;
+    if (orderA !== orderB) return orderA - orderB;
+    return a.propertyAddress.localeCompare(b.propertyAddress);
+  });
+
+  return groups;
 }
 
 export function daysUntil(isoDate: string) {

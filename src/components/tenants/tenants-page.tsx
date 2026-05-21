@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useMemo, useState, useTransition, type FormEvent } from "react";
-import { useRouter } from "next/navigation";
 import { PageHeader } from "@/components/ui/page-header";
 import { TenantForm } from "@/components/tenants/tenant-form";
 import { hasDevBypass, signedOutSaveMessage } from "@/lib/dev-bypass";
@@ -12,8 +11,12 @@ import {
   type PropertyRow,
 } from "@/lib/properties";
 import { createClient } from "@/lib/supabase/client";
-import { rowToTenant, type TenantRow } from "@/lib/tenants";
-import { formatCurrency } from "@/lib/utils";
+import {
+  groupTenantsByPropertyAndUnit,
+  rowToTenant,
+  type TenantRow,
+} from "@/lib/tenants";
+import { TenantsGroupedList } from "@/components/tenants/tenants-grouped-list";
 import type { Property, Tenant } from "@/types";
 
 type TenantsPageProps = {
@@ -21,15 +24,6 @@ type TenantsPageProps = {
   initialTenants: Tenant[];
   loadError?: string;
 };
-
-function formatDate(isoDate: string | null) {
-  if (!isoDate) return "Not set";
-  return new Date(isoDate + "T00:00:00").toLocaleDateString("en-US", {
-    month: "short",
-    day: "numeric",
-    year: "numeric",
-  });
-}
 
 type TenantEditDraft = {
   propertyId: string;
@@ -40,6 +34,9 @@ type TenantEditDraft = {
   leaseStart: string;
   leaseEnd: string;
   monthlyRent: string;
+  securityDeposit: string;
+  petName: string;
+  petType: string;
 };
 
 function draftFromTenant(tenant: Tenant): TenantEditDraft {
@@ -55,6 +52,12 @@ function draftFromTenant(tenant: Tenant): TenantEditDraft {
       tenant.monthlyRent !== null && tenant.monthlyRent !== undefined
         ? String(tenant.monthlyRent)
         : "",
+    securityDeposit:
+      tenant.securityDeposit !== null && tenant.securityDeposit !== undefined
+        ? String(tenant.securityDeposit)
+        : "",
+    petName: tenant.petName ?? "",
+    petType: tenant.petType ?? "",
   };
 }
 
@@ -66,7 +69,6 @@ export function TenantsPageClient({
   initialTenants,
   loadError,
 }: TenantsPageProps) {
-  const router = useRouter();
   const [properties, setProperties] = useState<Property[]>(initialProperties);
   const [tenants, setTenants] = useState<Tenant[]>(initialTenants);
   const [clientLoadError, setClientLoadError] = useState<string | null>(null);
@@ -146,10 +148,22 @@ export function TenantsPageClient({
     return tenants.filter((tenant) => {
       return (
         tenant.name.toLowerCase().includes(query) ||
-        tenant.propertyAddress.toLowerCase().includes(query)
+        tenant.propertyAddress.toLowerCase().includes(query) ||
+        (tenant.unitLabel?.toLowerCase().includes(query) ?? false)
       );
     });
   }, [search, tenants]);
+
+  const groupedTenants = useMemo(
+    () => groupTenantsByPropertyAndUnit(filteredTenants, properties),
+    [filteredTenants, properties],
+  );
+
+  function handleTenantUpdated(updated: Tenant) {
+    setTenants((current) =>
+      current.map((item) => (item.id === updated.id ? updated : item)),
+    );
+  }
 
   const selectedProperty = useMemo(
     () => properties.find((property) => property.id === editDraft?.propertyId),
@@ -272,6 +286,19 @@ export function TenantsPageClient({
       return;
     }
 
+    const securityDeposit = editDraft.securityDeposit
+      ? Number(editDraft.securityDeposit)
+      : null;
+    if (
+      editDraft.securityDeposit &&
+      (!Number.isFinite(securityDeposit) ||
+        securityDeposit === null ||
+        securityDeposit < 0)
+    ) {
+      setActionError("Security deposit must be zero or greater.");
+      return;
+    }
+
     setActionError(null);
     startTransition(async () => {
       const supabase = createClient();
@@ -295,6 +322,9 @@ export function TenantsPageClient({
           lease_start: editDraft.leaseStart || null,
           lease_end: editDraft.leaseEnd,
           monthly_rent: monthlyRent,
+          security_deposit: securityDeposit,
+          pet_name: editDraft.petName.trim() || null,
+          pet_type: editDraft.petType.trim() || null,
         })
         .eq("id", editingTenant.id)
         .eq("user_id", user.id)
@@ -319,7 +349,7 @@ export function TenantsPageClient({
       <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
         <PageHeader
           title="Tenants"
-          description="Track tenant details, leases, and contact information."
+          description="Grouped by property and apartment — rent, deposit, and lease dates at a glance."
         />
         <button
           type="button"
@@ -369,92 +399,6 @@ export function TenantsPageClient({
           </label>
         </header>
 
-        <div className="overflow-x-auto">
-          <table className="min-w-full divide-y divide-zinc-200 text-sm">
-            <thead className="bg-zinc-50 text-left text-xs font-semibold uppercase tracking-wide text-zinc-500">
-              <tr>
-                <th className="px-4 py-3">Name</th>
-                <th className="px-4 py-3">Email</th>
-                <th className="px-4 py-3">Phone</th>
-                <th className="px-4 py-3">Property</th>
-                <th className="px-4 py-3">Unit number</th>
-                <th className="px-4 py-3">Lease start</th>
-                <th className="px-4 py-3">Lease end</th>
-                <th className="px-4 py-3 text-right">Monthly rent</th>
-                <th className="px-4 py-3 text-right">Actions</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-zinc-100 bg-white">
-              {filteredTenants.map((tenant) => (
-                <tr
-                  key={tenant.id}
-                  tabIndex={0}
-                  role="link"
-                  onClick={() => router.push(`/tenants/${tenant.id}`)}
-                  onKeyDown={(event) => {
-                    if (event.key === "Enter" || event.key === " ") {
-                      event.preventDefault();
-                      router.push(`/tenants/${tenant.id}`);
-                    }
-                  }}
-                  className="cursor-pointer hover:bg-zinc-50/80"
-                >
-                  <td className="whitespace-nowrap px-4 py-3 font-medium text-zinc-900">
-                    {tenant.name}
-                  </td>
-                  <td className="whitespace-nowrap px-4 py-3 text-zinc-600">
-                    {tenant.email || "—"}
-                  </td>
-                  <td className="whitespace-nowrap px-4 py-3 text-zinc-600">
-                    {tenant.phone || "—"}
-                  </td>
-                  <td className="min-w-56 px-4 py-3 text-zinc-600">
-                    {tenant.propertyAddress}
-                  </td>
-                  <td className="whitespace-nowrap px-4 py-3 text-zinc-600">
-                    {tenant.unitLabel || "—"}
-                  </td>
-                  <td className="whitespace-nowrap px-4 py-3 text-zinc-600">
-                    {formatDate(tenant.leaseStart)}
-                  </td>
-                  <td className="whitespace-nowrap px-4 py-3 text-zinc-600">
-                    {formatDate(tenant.leaseEnd)}
-                  </td>
-                  <td className="whitespace-nowrap px-4 py-3 text-right font-medium text-zinc-900">
-                    {tenant.monthlyRent ? formatCurrency(tenant.monthlyRent) : "—"}
-                  </td>
-                  <td className="whitespace-nowrap px-4 py-3 text-right">
-                    <div className="flex justify-end gap-2">
-                      <button
-                        type="button"
-                        disabled={isPending}
-                        onClick={(event) => {
-                          event.stopPropagation();
-                          openEditDrawer(tenant);
-                        }}
-                        className="rounded-md border border-zinc-200 px-3 py-1.5 text-xs font-medium text-zinc-700 hover:bg-zinc-50 disabled:opacity-60"
-                      >
-                        Edit
-                      </button>
-                      <button
-                        type="button"
-                        disabled={isPending}
-                        onClick={(event) => {
-                          event.stopPropagation();
-                          handleArchive(tenant);
-                        }}
-                        className="rounded-md border border-zinc-200 px-3 py-1.5 text-xs font-medium text-red-600 hover:bg-red-50 disabled:opacity-60"
-                      >
-                        Archive
-                      </button>
-                    </div>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-
         {filteredTenants.length === 0 ? (
           <div className="px-6 py-12 text-center">
             <p className="text-sm font-medium text-zinc-900">
@@ -466,7 +410,15 @@ export function TenantsPageClient({
                 : "Try searching by another tenant name or property."}
             </p>
           </div>
-        ) : null}
+        ) : (
+          <TenantsGroupedList
+            groups={groupedTenants}
+            onEdit={openEditDrawer}
+            onArchive={handleArchive}
+            onTenantUpdated={handleTenantUpdated}
+            isPending={isPending}
+          />
+        )}
       </section>
 
       {isDrawerOpen ? (
@@ -636,6 +588,53 @@ export function TenantsPageClient({
                       className={inputClass}
                     />
                   </label>
+
+                  <label className="block">
+                    <span className="text-sm font-medium text-zinc-700">
+                      Security deposit
+                    </span>
+                    <input
+                      type="number"
+                      min={0}
+                      step={0.01}
+                      value={editDraft.securityDeposit}
+                      onChange={(event) =>
+                        updateEditDraft({ securityDeposit: event.target.value })
+                      }
+                      placeholder="e.g. one month rent"
+                      className={inputClass}
+                    />
+                  </label>
+
+                  <div className="rounded-lg border border-zinc-100 bg-zinc-50/80 p-4">
+                    <p className="text-sm font-medium text-zinc-700">Pet (optional)</p>
+                    <div className="mt-3 grid grid-cols-2 gap-3">
+                      <label className="block">
+                        <span className="text-xs text-zinc-500">Name</span>
+                        <input
+                          type="text"
+                          value={editDraft.petName}
+                          onChange={(event) =>
+                            updateEditDraft({ petName: event.target.value })
+                          }
+                          placeholder="Max"
+                          className={inputClass}
+                        />
+                      </label>
+                      <label className="block">
+                        <span className="text-xs text-zinc-500">Type</span>
+                        <input
+                          type="text"
+                          value={editDraft.petType}
+                          onChange={(event) =>
+                            updateEditDraft({ petType: event.target.value })
+                          }
+                          placeholder="Dog"
+                          className={inputClass}
+                        />
+                      </label>
+                    </div>
+                  </div>
                 </fieldset>
 
                 {actionError ? (

@@ -41,6 +41,9 @@ type TenantEditDraft = {
   leaseStart: string;
   leaseEnd: string;
   monthlyRent: string;
+  securityDeposit: string;
+  petName: string;
+  petType: string;
 };
 
 type LinkedRentPaymentRow = RentPaymentRow & {
@@ -81,6 +84,12 @@ function draftFromTenant(tenant: Tenant): TenantEditDraft {
       tenant.monthlyRent !== null && tenant.monthlyRent !== undefined
         ? String(tenant.monthlyRent)
         : "",
+    securityDeposit:
+      tenant.securityDeposit !== null && tenant.securityDeposit !== undefined
+        ? String(tenant.securityDeposit)
+        : "",
+    petName: tenant.petName ?? "",
+    petType: tenant.petType ?? "",
   };
 }
 
@@ -294,6 +303,19 @@ export function TenantProfileClient({ tenantId }: TenantProfileClientProps) {
       return;
     }
 
+    const securityDeposit = draft.securityDeposit
+      ? Number(draft.securityDeposit)
+      : null;
+    if (
+      draft.securityDeposit &&
+      (!Number.isFinite(securityDeposit) ||
+        securityDeposit === null ||
+        securityDeposit < 0)
+    ) {
+      setActionError("Security deposit must be zero or greater.");
+      return;
+    }
+
     setActionError(null);
     startTransition(async () => {
       const supabase = createClient();
@@ -317,6 +339,9 @@ export function TenantProfileClient({ tenantId }: TenantProfileClientProps) {
           lease_start: draft.leaseStart || null,
           lease_end: draft.leaseEnd,
           monthly_rent: monthlyRent,
+          security_deposit: securityDeposit,
+          pet_name: draft.petName.trim() || null,
+          pet_type: draft.petType.trim() || null,
         })
         .eq("id", tenant.id)
         .eq("user_id", user.id)
@@ -440,12 +465,32 @@ export function TenantProfileClient({ tenantId }: TenantProfileClientProps) {
                 {tenant.monthlyRent ? formatCurrency(tenant.monthlyRent) : "Not set"}
               </dd>
             </div>
+            <div>
+              <dt className="text-xs font-medium uppercase tracking-wide text-zinc-500">
+                Pet
+              </dt>
+              <dd className="mt-1 text-sm text-zinc-900">
+                {tenant.petName
+                  ? `${tenant.petName}${tenant.petType ? ` (${tenant.petType})` : ""}`
+                  : "None"}
+              </dd>
+            </div>
           </dl>
         </article>
 
         <article className="rounded-lg border border-zinc-200 bg-white p-6 shadow-sm">
-          <h2 className="text-sm font-semibold text-zinc-900">Lease info</h2>
+          <h2 className="text-sm font-semibold text-zinc-900">Lease & deposit</h2>
           <dl className="mt-4 space-y-4">
+            <div>
+              <dt className="text-xs font-medium uppercase tracking-wide text-zinc-500">
+                Security deposit
+              </dt>
+              <dd className="mt-1 text-lg font-semibold text-zinc-900">
+                {tenant.securityDeposit != null
+                  ? formatCurrency(tenant.securityDeposit)
+                  : "Not recorded"}
+              </dd>
+            </div>
             <div>
               <dt className="text-xs font-medium uppercase tracking-wide text-zinc-500">
                 Lease start
@@ -709,6 +754,47 @@ export function TenantProfileClient({ tenantId }: TenantProfileClientProps) {
                     className={inputClass}
                   />
                 </label>
+
+                <label className="block">
+                  <span className="text-sm font-medium text-zinc-700">
+                    Security deposit
+                  </span>
+                  <input
+                    type="number"
+                    min={0}
+                    step={0.01}
+                    value={draft.securityDeposit}
+                    onChange={(event) =>
+                      updateDraft({ securityDeposit: event.target.value })
+                    }
+                    className={inputClass}
+                  />
+                </label>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <label className="block">
+                    <span className="text-sm font-medium text-zinc-700">Pet name</span>
+                    <input
+                      type="text"
+                      value={draft.petName}
+                      onChange={(event) =>
+                        updateDraft({ petName: event.target.value })
+                      }
+                      className={inputClass}
+                    />
+                  </label>
+                  <label className="block">
+                    <span className="text-sm font-medium text-zinc-700">Pet type</span>
+                    <input
+                      type="text"
+                      value={draft.petType}
+                      onChange={(event) =>
+                        updateDraft({ petType: event.target.value })
+                      }
+                      className={inputClass}
+                    />
+                  </label>
+                </div>
               </fieldset>
 
               {actionError ? (

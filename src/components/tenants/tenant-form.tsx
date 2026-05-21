@@ -17,6 +17,9 @@ type TenantDraft = {
   leaseStart: string;
   leaseEnd: string;
   monthlyRent: string;
+  securityDeposit: string;
+  petName: string;
+  petType: string;
 };
 
 function newDraft(unitPreset?: string, rentPreset?: string): TenantDraft {
@@ -32,6 +35,9 @@ function newDraft(unitPreset?: string, rentPreset?: string): TenantDraft {
     leaseStart: todayIso(),
     leaseEnd: addDaysIso(365),
     monthlyRent: rentPreset ?? "",
+    securityDeposit: "",
+    petName: "",
+    petType: "",
   };
 }
 
@@ -135,6 +141,17 @@ export function TenantForm({ properties, onTenantsAdded }: TenantFormProps) {
         return;
       }
 
+      const parsedDeposit = row.securityDeposit
+        ? Number(row.securityDeposit)
+        : undefined;
+      if (
+        row.securityDeposit &&
+        (!Number.isFinite(parsedDeposit) || parsedDeposit! < 0)
+      ) {
+        setError(`Security deposit must be zero or greater (row ${i + 1}).`);
+        return;
+      }
+
       inputs.push({
         propertyId,
         name,
@@ -144,6 +161,9 @@ export function TenantForm({ properties, onTenantsAdded }: TenantFormProps) {
         leaseStart: row.leaseStart || undefined,
         leaseEnd: row.leaseEnd,
         monthlyRent: parsedRent,
+        securityDeposit: parsedDeposit,
+        petName: row.petName.trim() || undefined,
+        petType: row.petType.trim() || undefined,
       });
     }
 
@@ -176,6 +196,9 @@ export function TenantForm({ properties, onTenantsAdded }: TenantFormProps) {
             lease_start: input.leaseStart || null,
             lease_end: input.leaseEnd,
             monthly_rent: input.monthlyRent ?? null,
+            security_deposit: input.securityDeposit ?? null,
+            pet_name: input.petName?.trim() || null,
+            pet_type: input.petType?.trim() || null,
           })),
         )
         .select(`*, properties(${PROPERTY_ADDRESS_SELECT})`);
@@ -385,6 +408,50 @@ export function TenantForm({ properties, onTenantsAdded }: TenantFormProps) {
                 className="mt-1.5 w-full rounded-md border border-zinc-200 bg-white px-3 py-2 text-sm focus:border-zinc-400 focus:outline-none focus:ring-2 focus:ring-zinc-200 disabled:opacity-60"
               />
             </label>
+
+            <label className="block">
+              <span className="text-sm font-medium text-zinc-700">
+                Security deposit
+              </span>
+              <input
+                type="number"
+                min={0}
+                step={0.01}
+                value={row.securityDeposit}
+                onChange={(e) =>
+                  updateRow(row.key, { securityDeposit: e.target.value })
+                }
+                placeholder="Optional"
+                className="mt-1.5 w-full rounded-md border border-zinc-200 bg-white px-3 py-2 text-sm focus:border-zinc-400 focus:outline-none focus:ring-2 focus:ring-zinc-200 disabled:opacity-60"
+              />
+            </label>
+
+            <div className="grid grid-cols-2 gap-3">
+              <label className="block">
+                <span className="text-sm font-medium text-zinc-700">Pet name</span>
+                <input
+                  type="text"
+                  value={row.petName}
+                  onChange={(e) =>
+                    updateRow(row.key, { petName: e.target.value })
+                  }
+                  placeholder="Optional"
+                  className="mt-1.5 w-full rounded-md border border-zinc-200 bg-white px-3 py-2 text-sm focus:border-zinc-400 focus:outline-none focus:ring-2 focus:ring-zinc-200 disabled:opacity-60"
+                />
+              </label>
+              <label className="block">
+                <span className="text-sm font-medium text-zinc-700">Pet type</span>
+                <input
+                  type="text"
+                  value={row.petType}
+                  onChange={(e) =>
+                    updateRow(row.key, { petType: e.target.value })
+                  }
+                  placeholder="Dog"
+                  className="mt-1.5 w-full rounded-md border border-zinc-200 bg-white px-3 py-2 text-sm focus:border-zinc-400 focus:outline-none focus:ring-2 focus:ring-zinc-200 disabled:opacity-60"
+                />
+              </label>
+            </div>
           </div>
         ))}
 

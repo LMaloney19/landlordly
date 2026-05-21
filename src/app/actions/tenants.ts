@@ -18,6 +18,9 @@ export type TenantInput = {
   leaseStart?: string;
   leaseEnd: string;
   monthlyRent?: number;
+  securityDeposit?: number;
+  petName?: string;
+  petType?: string;
 };
 
 const LEASE_EXPIRY_WINDOW_DAYS = 60;
@@ -127,6 +130,9 @@ export async function createTenants(
     lease_start: input.leaseStart || null,
     lease_end: input.leaseEnd,
     monthly_rent: input.monthlyRent ?? null,
+    security_deposit: input.securityDeposit ?? null,
+    pet_name: input.petName?.trim() || null,
+    pet_type: input.petType?.trim() || null,
   }));
 
   const { data, error } = await supabase
