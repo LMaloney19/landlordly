@@ -13,7 +13,8 @@ import {
   Users,
   BarChart3,
 } from "lucide-react";
-import { SidebarFooter } from "@/components/layout/sidebar-footer";
+import { SidebarAccountFooter } from "@/components/layout/sidebar-account-footer";
+import { SignOutButton } from "@/components/layout/sign-out-button";
 import { cn } from "@/lib/utils";
 
 const navItems = [
@@ -35,14 +36,17 @@ export function Sidebar({ userEmail }: SidebarProps) {
   const pathname = usePathname();
 
   return (
-    <aside className="flex h-full w-60 shrink-0 flex-col border-r border-zinc-200 bg-white">
-      <header className="flex h-14 items-center gap-2 border-b border-zinc-200 px-5">
-        <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-zinc-900 text-white">
-          <Home className="h-4 w-4" aria-hidden />
-        </span>
-        <span className="text-sm font-semibold tracking-tight text-zinc-900">
-          Landlordly
-        </span>
+    <aside className="flex min-h-screen w-60 shrink-0 flex-col border-r border-zinc-200 bg-white">
+      <header className="flex h-14 shrink-0 items-center justify-between gap-2 border-b border-zinc-200 px-4">
+        <div className="flex min-w-0 items-center gap-2">
+          <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-zinc-900 text-white">
+            <Home className="h-4 w-4" aria-hidden />
+          </span>
+          <span className="truncate text-sm font-semibold tracking-tight text-zinc-900">
+            Landlordly
+          </span>
+        </div>
+        <SignOutButton variant="header" />
       </header>
 
       <nav className="flex-1 space-y-0.5 p-3">
@@ -69,13 +73,7 @@ export function Sidebar({ userEmail }: SidebarProps) {
         })}
       </nav>
 
-      {userEmail ? (
-        <SidebarFooter email={userEmail} />
-      ) : (
-        <footer className="border-t border-zinc-200 p-4">
-          <p className="text-xs text-zinc-500">Configure Supabase to sign in</p>
-        </footer>
-      )}
+      <SidebarAccountFooter serverEmail={userEmail} />
     </aside>
   );
 }

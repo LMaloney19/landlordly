@@ -1,11 +1,16 @@
 const DEV_BYPASS_KEY = "landlordly.devAuthBypass";
 
 export function canUseDevBypass() {
-  return process.env.NODE_ENV === "development";
+  return (
+    process.env.NODE_ENV === "development" &&
+    process.env.NEXT_PUBLIC_VERCEL_ENV !== "production"
+  );
 }
 
 export function hasDevBypass() {
   if (!canUseDevBypass() || typeof window === "undefined") return false;
+  // Ignore stale flags if localStorage was set during local dev on the same browser.
+  if (process.env.NEXT_PUBLIC_VERCEL_ENV === "production") return false;
   return window.localStorage.getItem(DEV_BYPASS_KEY) === "true";
 }
 

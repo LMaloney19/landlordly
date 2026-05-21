@@ -7,6 +7,7 @@ import {
   getDevTestCredentials,
   hasDevBypass,
 } from "@/lib/dev-bypass";
+import { signOutAndGoToLogin } from "@/lib/auth-sign-out";
 import { createClient } from "@/lib/supabase/client";
 import { cn } from "@/lib/utils";
 
@@ -20,14 +21,19 @@ export function LoginForm({ redirectTo, initialError = null }: LoginFormProps) {
   const [error, setError] = useState<string | null>(initialError);
   const [message, setMessage] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
+  const [signedInEmail, setSignedInEmail] = useState<string | null>(null);
+  const [devBypassActive, setDevBypassActive] = useState(false);
   const devCredentials = getDevTestCredentials();
 
   useEffect(() => {
     let cancelled = false;
 
-    async function redirectIfSignedIn() {
+    async function detectExistingSession() {
       if (hasDevBypass()) {
-        window.location.replace(redirectTo);
+        if (!cancelled) {
+          setDevBypassActive(true);
+          setSignedInEmail(null);
+        }
         return;
       }
 
@@ -36,17 +42,18 @@ export function LoginForm({ redirectTo, initialError = null }: LoginFormProps) {
         data: { user },
       } = await supabase.auth.getUser();
 
-      if (!cancelled && user) {
-        window.location.replace(redirectTo);
+      if (!cancelled) {
+        setSignedInEmail(user?.email ?? null);
+        setDevBypassActive(false);
       }
     }
 
-    void redirectIfSignedIn();
+    void detectExistingSession();
 
     return () => {
       cancelled = true;
     };
-  }, [redirectTo]);
+  }, []);
 
   async function handleSignIn(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -130,6 +137,60 @@ export function LoginForm({ redirectTo, initialError = null }: LoginFormProps) {
     );
     setPending(false);
     setMode("signin");
+  }
+
+  if (devBypassActive) {
+    return (
+      <section className="rounded-lg border border-zinc-200 bg-white p-6 shadow-sm">
+        <p className="text-sm text-zinc-700">
+          Dev mode is active (local development only). Sign out to use a real
+          account.
+        </p>
+        <div className="mt-4 flex flex-col gap-2">
+          <button
+            type="button"
+            onClick={() => window.location.assign(redirectTo)}
+            className="w-full rounded-md bg-zinc-900 px-4 py-2.5 text-sm font-medium text-white transition-colors hover:bg-zinc-800"
+          >
+            Continue to dashboard
+          </button>
+          <button
+            type="button"
+            onClick={() => void signOutAndGoToLogin()}
+            className="w-full rounded-md border border-zinc-200 px-4 py-2.5 text-sm font-medium text-zinc-700 transition-colors hover:bg-zinc-50"
+          >
+            Sign out of dev mode
+          </button>
+        </div>
+      </section>
+    );
+  }
+
+  if (signedInEmail) {
+    return (
+      <section className="rounded-lg border border-zinc-200 bg-white p-6 shadow-sm">
+        <p className="text-sm text-zinc-700">
+          You are already signed in as{" "}
+          <span className="font-medium text-zinc-900">{signedInEmail}</span>.
+        </p>
+        <div className="mt-4 flex flex-col gap-2">
+          <button
+            type="button"
+            onClick={() => window.location.assign(redirectTo)}
+            className="w-full rounded-md bg-zinc-900 px-4 py-2.5 text-sm font-medium text-white transition-colors hover:bg-zinc-800"
+          >
+            Continue to dashboard
+          </button>
+          <button
+            type="button"
+            onClick={() => void signOutAndGoToLogin()}
+            className="w-full rounded-md border border-zinc-200 px-4 py-2.5 text-sm font-medium text-zinc-700 transition-colors hover:bg-zinc-50"
+          >
+            Sign out and use a different account
+          </button>
+        </div>
+      </section>
+    );
   }
 
   return (
