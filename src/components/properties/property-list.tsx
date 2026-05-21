@@ -1,12 +1,13 @@
 "use client";
 
+import { Pencil, Trash2 } from "lucide-react";
 import { useState, useTransition } from "react";
 import { PropertyEditForm } from "@/components/properties/property-edit-form";
 import { formatBedrooms } from "@/lib/bedrooms";
 import { signedOutSaveMessage } from "@/lib/dev-bypass";
 import { getPropertyAddressLines } from "@/lib/properties";
 import { createClient } from "@/lib/supabase/client";
-import { formatCurrency } from "@/lib/utils";
+import { cn, formatCurrency } from "@/lib/utils";
 import type { Property } from "@/types";
 
 type PropertyListProps = {
@@ -112,24 +113,33 @@ export function PropertyList({
                     {formatCurrency(property.totalMonthlyRent)}/mo total
                   </p>
                 </address>
-                <div className="flex shrink-0 gap-2">
+                <div className="flex shrink-0 gap-1">
                   <button
                     type="button"
                     disabled={isPending}
                     onClick={() =>
                       setEditingId(isEditing ? null : property.id)
                     }
-                    className="rounded-md border border-zinc-200 px-3 py-1.5 text-sm font-medium text-zinc-700 transition-colors hover:bg-zinc-50 disabled:opacity-60"
+                    className={cn(
+                      "rounded-md p-1.5 text-zinc-500 hover:bg-zinc-100 hover:text-zinc-800 disabled:opacity-50",
+                      isEditing && "bg-zinc-100 text-zinc-900",
+                    )}
+                    aria-label={
+                      isEditing
+                        ? `Close edit for ${property.formattedAddress}`
+                        : `Edit ${property.formattedAddress}`
+                    }
                   >
-                    {isEditing ? "Close" : "Edit"}
+                    <Pencil className="h-4 w-4" />
                   </button>
                   <button
                     type="button"
                     disabled={isPending}
                     onClick={() => handleDelete(property)}
-                    className="rounded-md border border-zinc-200 px-3 py-1.5 text-sm font-medium text-red-600 transition-colors hover:bg-red-50 disabled:opacity-60"
+                    className="rounded-md p-1.5 text-zinc-500 hover:bg-red-50 hover:text-red-600 disabled:opacity-50"
+                    aria-label={`Archive ${property.formattedAddress}`}
                   >
-                    Archive
+                    <Trash2 className="h-4 w-4" />
                   </button>
                 </div>
               </div>

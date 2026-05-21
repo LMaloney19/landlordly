@@ -303,14 +303,14 @@ function TenantRowCard({
           </div>
         </div>
         <div
-          className="flex shrink-0 gap-0.5 opacity-100 sm:opacity-0 sm:transition-opacity sm:group-hover:opacity-100"
+          className="flex shrink-0 gap-1"
           onClick={(e) => e.stopPropagation()}
         >
           <button
             type="button"
             disabled={isPending}
             onClick={() => onEdit(tenant)}
-            className="rounded-md p-2 text-zinc-500 hover:bg-zinc-100 hover:text-zinc-900"
+            className="rounded-md p-1.5 text-zinc-500 hover:bg-zinc-100 hover:text-zinc-800 disabled:opacity-50"
             aria-label={`Edit ${tenant.name}`}
           >
             <Pencil className="h-4 w-4" />
@@ -319,7 +319,7 @@ function TenantRowCard({
             type="button"
             disabled={isPending}
             onClick={() => onArchive(tenant)}
-            className="rounded-md p-2 text-zinc-500 hover:bg-red-50 hover:text-red-600"
+            className="rounded-md p-1.5 text-zinc-500 hover:bg-red-50 hover:text-red-600 disabled:opacity-50"
             aria-label={`Archive ${tenant.name}`}
           >
             <Trash2 className="h-4 w-4" />
