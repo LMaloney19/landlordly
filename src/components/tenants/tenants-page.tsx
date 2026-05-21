@@ -349,7 +349,7 @@ export function TenantsPageClient({
       <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
         <PageHeader
           title="Tenants"
-          description="Grouped by property and apartment — rent, deposit, and lease dates at a glance."
+          description="Properties, units, and leases — expand each building to manage tenants."
         />
         <button
           type="button"
@@ -381,10 +381,10 @@ export function TenantsPageClient({
       <section className="overflow-hidden rounded-lg border border-zinc-200 bg-white shadow-sm">
         <header className="flex flex-col gap-3 border-b border-zinc-200 px-6 py-4 md:flex-row md:items-center md:justify-between">
           <div>
-            <h2 className="text-sm font-semibold text-zinc-900">All tenants</h2>
+            <h2 className="text-sm font-semibold text-zinc-900">Portfolio</h2>
             <p className="mt-0.5 text-sm text-zinc-500">
-              {filteredTenants.length} of {tenants.length}{" "}
-              {tenants.length === 1 ? "tenant" : "tenants"}
+              {filteredTenants.length} of {tenants.length} active{" "}
+              {tenants.length === 1 ? "tenant" : "tenants"} across your properties
             </p>
           </div>
           <label className="w-full md:max-w-xs">

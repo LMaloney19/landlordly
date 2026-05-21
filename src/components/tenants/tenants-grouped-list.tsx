@@ -1,6 +1,16 @@
 "use client";
 
-import { ChevronDown, Dog, Pencil, Trash2 } from "lucide-react";
+import {
+  Building2,
+  ChevronDown,
+  Dog,
+  DoorOpen,
+  Mail,
+  Pencil,
+  Phone,
+  Trash2,
+  User,
+} from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useEffect, useState, useTransition } from "react";
 import { signedOutSaveMessage } from "@/lib/dev-bypass";
@@ -11,13 +21,13 @@ import {
   rowToTenant,
   type TenantPropertyGroup,
   type TenantRow,
+  type TenantUnitGroup,
 } from "@/lib/tenants";
 import { cn, formatCurrency } from "@/lib/utils";
 import type { Tenant } from "@/types";
 
 type TenantsGroupedListProps = {
   groups: TenantPropertyGroup[];
-  /** When this changes (e.g. search), all property sections collapse. */
   collapseKey?: string;
   onEdit: (tenant: Tenant) => void;
   onArchive: (tenant: Tenant) => void;
@@ -30,14 +40,39 @@ function formatShortDate(isoDate: string | null) {
   return new Date(isoDate + "T00:00:00").toLocaleDateString("en-US", {
     month: "short",
     day: "numeric",
-    year: "2-digit",
+    year: "numeric",
   });
 }
 
+function formatUnitTitle(unitLabel: string) {
+  if (unitLabel === "— No unit") return "Unassigned unit";
+  return `Unit ${unitLabel}`;
+}
+
 function leaseBadgeClass(days: number) {
-  if (days < 30) return "bg-red-50 text-red-700";
-  if (days < 60) return "bg-amber-50 text-amber-700";
-  return "bg-zinc-100 text-zinc-600";
+  if (days < 0) return "bg-red-100 text-red-800 ring-red-200";
+  if (days < 30) return "bg-red-50 text-red-700 ring-red-100";
+  if (days < 60) return "bg-amber-50 text-amber-800 ring-amber-100";
+  return "bg-emerald-50 text-emerald-800 ring-emerald-100";
+}
+
+function StatCell({
+  label,
+  value,
+  className,
+}: {
+  label: string;
+  value: string;
+  className?: string;
+}) {
+  return (
+    <div className={cn("rounded-md bg-zinc-50 px-2.5 py-2 ring-1 ring-zinc-100", className)}>
+      <p className="text-[10px] font-medium uppercase tracking-wider text-zinc-500">
+        {label}
+      </p>
+      <p className="mt-0.5 text-sm font-semibold tabular-nums text-zinc-900">{value}</p>
+    </div>
+  );
 }
 
 function TenantPetControl({
@@ -124,9 +159,9 @@ function TenantPetControl({
 
   if (tenant.petName && !isEditing) {
     return (
-      <div className="flex flex-wrap items-center gap-1.5">
-        <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2 py-0.5 text-xs font-medium text-emerald-800">
-          <Dog className="h-3 w-3" aria-hidden />
+      <div className="flex flex-wrap items-center gap-2 border-t border-zinc-100 pt-3">
+        <span className="inline-flex items-center gap-1.5 rounded-md bg-emerald-50 px-2.5 py-1 text-xs font-medium text-emerald-800 ring-1 ring-emerald-100">
+          <Dog className="h-3.5 w-3.5" aria-hidden />
           {tenant.petName}
           {tenant.petType ? ` · ${tenant.petType}` : ""}
         </span>
@@ -139,9 +174,9 @@ function TenantPetControl({
             setPetType(tenant.petType ?? "");
             setIsEditing(true);
           }}
-          className="text-xs text-zinc-500 hover:text-zinc-800 disabled:opacity-50"
+          className="text-xs font-medium text-zinc-500 hover:text-zinc-800"
         >
-          Edit pet
+          Edit
         </button>
       </div>
     );
@@ -150,83 +185,76 @@ function TenantPetControl({
   if (isEditing) {
     return (
       <div
-        className="flex flex-wrap items-end gap-2"
+        className="space-y-2 border-t border-zinc-100 pt-3"
         onClick={(e) => e.stopPropagation()}
       >
-        <label className="min-w-0 flex-1">
-          <span className="sr-only">Pet name</span>
+        <p className="text-xs font-medium text-zinc-600">Pet on lease</p>
+        <div className="flex flex-wrap items-end gap-2">
           <input
             type="text"
             value={petName}
             onChange={(e) => setPetName(e.target.value)}
             placeholder="Pet name"
-            className="w-full rounded border border-zinc-200 px-2 py-1 text-xs"
+            className="min-w-[120px] flex-1 rounded-md border border-zinc-200 px-2.5 py-1.5 text-sm"
           />
-        </label>
-        <label className="w-20">
-          <span className="sr-only">Pet type</span>
           <input
             type="text"
             value={petType}
             onChange={(e) => setPetType(e.target.value)}
-            placeholder="Dog"
-            className="w-full rounded border border-zinc-200 px-2 py-1 text-xs"
+            placeholder="Type (e.g. Dog)"
+            className="w-28 rounded-md border border-zinc-200 px-2.5 py-1.5 text-sm"
           />
-        </label>
-        <button
-          type="button"
-          disabled={isSaving}
-          onClick={savePet}
-          className="rounded bg-zinc-900 px-2 py-1 text-xs font-medium text-white"
-        >
-          Save
-        </button>
-        <button
-          type="button"
-          disabled={isSaving}
-          onClick={() => {
-            if (tenant.petName) {
-              setIsEditing(false);
-            } else {
-              setPetName("");
-              setPetType("");
-              setIsEditing(false);
-            }
-          }}
-          className="text-xs text-zinc-500"
-        >
-          Cancel
-        </button>
-        {tenant.petName ? (
           <button
             type="button"
             disabled={isSaving}
-            onClick={clearPet}
-            className="text-xs text-red-600"
+            onClick={savePet}
+            className="rounded-md bg-zinc-900 px-3 py-1.5 text-xs font-medium text-white"
           >
-            Remove
+            Save
           </button>
-        ) : null}
-        {error ? (
-          <p className="w-full text-xs text-red-600">{error}</p>
-        ) : null}
+          <button
+            type="button"
+            disabled={isSaving}
+            onClick={() => {
+              if (tenant.petName) setIsEditing(false);
+              else {
+                setPetName("");
+                setPetType("");
+                setIsEditing(false);
+              }
+            }}
+            className="text-xs text-zinc-500"
+          >
+            Cancel
+          </button>
+          {tenant.petName ? (
+            <button
+              type="button"
+              disabled={isSaving}
+              onClick={clearPet}
+              className="text-xs text-red-600"
+            >
+              Remove
+            </button>
+          ) : null}
+        </div>
+        {error ? <p className="text-xs text-red-600">{error}</p> : null}
       </div>
     );
   }
 
   return (
-    <button
-      type="button"
-      disabled={disabled || isSaving}
-      onClick={(e) => {
-        e.stopPropagation();
-        setIsEditing(true);
-      }}
-      className="inline-flex items-center gap-1 rounded-md border border-dashed border-zinc-300 px-2 py-0.5 text-xs font-medium text-zinc-600 hover:border-zinc-400 hover:bg-zinc-50 disabled:opacity-50"
-    >
-      <Dog className="h-3 w-3" aria-hidden />
-      Add pet
-    </button>
+    <div className="border-t border-zinc-100 pt-3" onClick={(e) => e.stopPropagation()}>
+      <button
+        type="button"
+        disabled={disabled || isSaving}
+        onClick={() => setIsEditing(true)}
+        className="inline-flex items-center gap-1.5 text-xs font-medium text-zinc-600 hover:text-zinc-900 disabled:opacity-50"
+      >
+        <Dog className="h-3.5 w-3.5" aria-hidden />
+        Add pet to lease
+      </button>
+    </div>
   );
 }
 
@@ -247,7 +275,7 @@ function TenantRowCard({
   const days = daysUntil(tenant.leaseEnd);
 
   return (
-    <div
+    <article
       role="link"
       tabIndex={0}
       onClick={() => router.push(`/tenants/${tenant.id}`)}
@@ -257,75 +285,174 @@ function TenantRowCard({
           router.push(`/tenants/${tenant.id}`);
         }
       }}
-      className="cursor-pointer rounded-lg border border-zinc-100 bg-zinc-50/50 px-3 py-2.5 transition-colors hover:border-zinc-200 hover:bg-white"
+      className="group cursor-pointer rounded-lg border border-zinc-200 bg-white p-4 shadow-sm transition-all hover:border-zinc-300 hover:shadow-md"
     >
-      <div className="flex flex-wrap items-start justify-between gap-2">
-        <div className="min-w-0 flex-1">
-          <p className="font-medium text-zinc-900">{tenant.name}</p>
-          <p className="mt-0.5 truncate text-xs text-zinc-500">
-            {[tenant.email, tenant.phone].filter(Boolean).join(" · ") || "No contact"}
-          </p>
+      <div className="flex items-start justify-between gap-3">
+        <div className="flex min-w-0 gap-3">
+          <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-zinc-100 text-zinc-600">
+            <User className="h-4 w-4" aria-hidden />
+          </span>
+          <div className="min-w-0">
+            <p className="font-semibold text-zinc-900">{tenant.name}</p>
+            <div className="mt-1 flex flex-col gap-0.5 text-xs text-zinc-500">
+              {tenant.email ? (
+                <span className="inline-flex items-center gap-1 truncate">
+                  <Mail className="h-3 w-3 shrink-0" aria-hidden />
+                  {tenant.email}
+                </span>
+              ) : null}
+              {tenant.phone ? (
+                <span className="inline-flex items-center gap-1">
+                  <Phone className="h-3 w-3 shrink-0" aria-hidden />
+                  {tenant.phone}
+                </span>
+              ) : null}
+              {!tenant.email && !tenant.phone ? (
+                <span className="text-zinc-400">No contact info</span>
+              ) : null}
+            </div>
+          </div>
         </div>
-        <div className="flex shrink-0 gap-1" onClick={(e) => e.stopPropagation()}>
+        <div
+          className="flex shrink-0 gap-0.5 opacity-100 sm:opacity-0 sm:transition-opacity sm:group-hover:opacity-100"
+          onClick={(e) => e.stopPropagation()}
+        >
           <button
             type="button"
             disabled={isPending}
             onClick={() => onEdit(tenant)}
-            className="rounded p-1.5 text-zinc-500 hover:bg-zinc-100 hover:text-zinc-900 disabled:opacity-50"
+            className="rounded-md p-2 text-zinc-500 hover:bg-zinc-100 hover:text-zinc-900"
             aria-label={`Edit ${tenant.name}`}
           >
-            <Pencil className="h-3.5 w-3.5" />
+            <Pencil className="h-4 w-4" />
           </button>
           <button
             type="button"
             disabled={isPending}
             onClick={() => onArchive(tenant)}
-            className="rounded p-1.5 text-zinc-500 hover:bg-red-50 hover:text-red-600 disabled:opacity-50"
+            className="rounded-md p-2 text-zinc-500 hover:bg-red-50 hover:text-red-600"
             aria-label={`Archive ${tenant.name}`}
           >
-            <Trash2 className="h-3.5 w-3.5" />
+            <Trash2 className="h-4 w-4" />
           </button>
         </div>
       </div>
 
-      <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-zinc-600">
-        <span>
-          Rent{" "}
-          <span className="font-medium text-zinc-900">
-            {tenant.monthlyRent ? formatCurrency(tenant.monthlyRent) : "—"}
-          </span>
-        </span>
-        <span>
-          Deposit{" "}
-          <span className="font-medium text-zinc-900">
-            {tenant.securityDeposit != null
+      <div className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-4">
+        <StatCell
+          label="Monthly rent"
+          value={tenant.monthlyRent ? formatCurrency(tenant.monthlyRent) : "—"}
+        />
+        <StatCell
+          label="Deposit"
+          value={
+            tenant.securityDeposit != null
               ? formatCurrency(tenant.securityDeposit)
-              : "—"}
+              : "—"
+          }
+        />
+        <StatCell label="Lease ends" value={formatShortDate(tenant.leaseEnd)} />
+        <div className="flex flex-col justify-center rounded-md bg-zinc-50 px-2.5 py-2 ring-1 ring-zinc-100">
+          <p className="text-[10px] font-medium uppercase tracking-wider text-zinc-500">
+            Status
+          </p>
+          <span
+            className={cn(
+              "mt-1 inline-flex w-fit rounded-full px-2 py-0.5 text-xs font-semibold ring-1",
+              leaseBadgeClass(days),
+            )}
+          >
+            {days < 0 ? "Expired" : `${days} days left`}
           </span>
-        </span>
-        <span>
-          Lease ends{" "}
-          <span className="font-medium text-zinc-900">
-            {formatShortDate(tenant.leaseEnd)}
+        </div>
+      </div>
+
+      <TenantPetControl
+        tenant={tenant}
+        onUpdated={onTenantUpdated}
+        disabled={isPending}
+      />
+    </article>
+  );
+}
+
+function UnitSection({
+  unit,
+  onEdit,
+  onArchive,
+  onTenantUpdated,
+  isPending,
+}: {
+  unit: TenantUnitGroup;
+  onEdit: (tenant: Tenant) => void;
+  onArchive: (tenant: Tenant) => void;
+  onTenantUpdated: (tenant: Tenant) => void;
+  isPending: boolean;
+}) {
+  const isVacant = unit.tenants.length === 0;
+
+  return (
+    <div
+      className={cn(
+        "overflow-hidden rounded-lg border bg-white",
+        isVacant ? "border-dashed border-zinc-200" : "border-zinc-200 shadow-sm",
+      )}
+    >
+      <div
+        className={cn(
+          "flex items-center justify-between gap-3 border-b px-4 py-3",
+          isVacant ? "border-zinc-100 bg-zinc-50/50" : "border-zinc-100 bg-zinc-50",
+        )}
+      >
+        <div className="flex min-w-0 items-center gap-2.5">
+          <span
+            className={cn(
+              "flex h-8 w-8 shrink-0 items-center justify-center rounded-md",
+              isVacant ? "bg-zinc-100 text-zinc-400" : "bg-white text-zinc-700 ring-1 ring-zinc-200",
+            )}
+          >
+            <DoorOpen className="h-4 w-4" aria-hidden />
           </span>
-        </span>
+          <div>
+            <p className="text-[10px] font-medium uppercase tracking-wider text-zinc-500">
+              Apartment / unit
+            </p>
+            <p className="text-sm font-semibold text-zinc-900">
+              {formatUnitTitle(unit.unitLabel)}
+            </p>
+          </div>
+        </div>
         <span
           className={cn(
-            "rounded-full px-2 py-0.5 font-medium",
-            leaseBadgeClass(days),
+            "shrink-0 rounded-full px-2.5 py-1 text-xs font-medium",
+            isVacant
+              ? "bg-zinc-100 text-zinc-500"
+              : "bg-zinc-900 text-white",
           )}
         >
-          {days < 0 ? "Expired" : `${days}d left`}
+          {isVacant ? "Vacant" : `${unit.tenants.length} tenant${unit.tenants.length === 1 ? "" : "s"}`}
         </span>
       </div>
 
-      <div className="mt-2" onClick={(e) => e.stopPropagation()}>
-        <TenantPetControl
-          tenant={tenant}
-          onUpdated={onTenantUpdated}
-          disabled={isPending}
-        />
-      </div>
+      {isVacant ? (
+        <p className="px-4 py-6 text-center text-sm text-zinc-400">
+          No tenant assigned to this unit
+        </p>
+      ) : (
+        <ul className="space-y-3 p-3">
+          {unit.tenants.map((tenant) => (
+            <li key={tenant.id}>
+              <TenantRowCard
+                tenant={tenant}
+                onEdit={onEdit}
+                onArchive={onArchive}
+                onTenantUpdated={onTenantUpdated}
+                isPending={isPending}
+              />
+            </li>
+          ))}
+        </ul>
+      )}
     </div>
   );
 }
@@ -360,78 +487,114 @@ export function TenantsGroupedList({
     });
   }
 
+  function expandAll() {
+    setExpandedIds(new Set(groups.map((g) => g.propertyId)));
+  }
+
+  function collapseAll() {
+    setExpandedIds(new Set());
+  }
+
   if (groups.length === 0) {
     return null;
   }
 
+  const allExpanded =
+    groups.length > 0 && groups.every((g) => expandedIds.has(g.propertyId));
+
   return (
-    <div className="divide-y divide-zinc-200">
-      {groups.map((property) => {
-        const isExpanded = expandedIds.has(property.propertyId);
-        const tenantCount = tenantCountForProperty(property);
-        const unitCount = property.units.filter((u) => u.tenants.length > 0).length;
+    <div className="p-4 sm:p-6">
+      <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
+        <p className="text-xs text-zinc-500">
+          Expand a property to view units and tenants
+        </p>
+        <div className="flex gap-2">
+          <button
+            type="button"
+            onClick={expandAll}
+            disabled={allExpanded}
+            className="rounded-md border border-zinc-200 px-2.5 py-1 text-xs font-medium text-zinc-600 hover:bg-zinc-50 disabled:opacity-40"
+          >
+            Expand all
+          </button>
+          <button
+            type="button"
+            onClick={collapseAll}
+            disabled={expandedIds.size === 0}
+            className="rounded-md border border-zinc-200 px-2.5 py-1 text-xs font-medium text-zinc-600 hover:bg-zinc-50 disabled:opacity-40"
+          >
+            Collapse all
+          </button>
+        </div>
+      </div>
 
-        return (
-          <section key={property.propertyId} className="px-4 py-3 sm:px-6">
-            <button
-              type="button"
-              onClick={() => toggleProperty(property.propertyId)}
-              aria-expanded={isExpanded}
-              className="flex w-full items-start gap-3 rounded-lg px-2 py-2 text-left transition-colors hover:bg-zinc-50"
+      <div className="space-y-3">
+        {groups.map((property) => {
+          const isExpanded = expandedIds.has(property.propertyId);
+          const tenantCount = tenantCountForProperty(property);
+          const occupiedUnits = property.units.filter((u) => u.tenants.length > 0).length;
+
+          return (
+            <section
+              key={property.propertyId}
+              className="overflow-hidden rounded-xl border border-zinc-200 bg-white shadow-sm"
             >
-              <ChevronDown
-                className={cn(
-                  "mt-0.5 h-4 w-4 shrink-0 text-zinc-500 transition-transform",
-                  isExpanded ? "rotate-0" : "-rotate-90",
-                )}
-                aria-hidden
-              />
-              <span className="min-w-0 flex-1">
-                <span className="block text-sm font-semibold text-zinc-900">
-                  {property.propertyAddress}
+              <button
+                type="button"
+                onClick={() => toggleProperty(property.propertyId)}
+                aria-expanded={isExpanded}
+                className="flex w-full items-center gap-4 px-4 py-4 text-left transition-colors hover:bg-zinc-50/80 sm:px-5"
+              >
+                <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-zinc-900 text-white shadow-sm">
+                  <Building2 className="h-5 w-5" aria-hidden />
                 </span>
-                <span className="mt-0.5 block text-xs text-zinc-500">
-                  {tenantCount} {tenantCount === 1 ? "tenant" : "tenants"}
-                  {unitCount > 0
-                    ? ` · ${unitCount} ${unitCount === 1 ? "unit" : "units"}`
-                    : ""}
+                <span className="min-w-0 flex-1">
+                  <span className="text-[10px] font-semibold uppercase tracking-wider text-zinc-500">
+                    Property
+                  </span>
+                  <span className="mt-0.5 block text-base font-semibold leading-snug text-zinc-900">
+                    {property.propertyAddress}
+                  </span>
+                  <span className="mt-2 flex flex-wrap gap-2">
+                    <span className="rounded-full bg-zinc-100 px-2.5 py-0.5 text-xs font-medium text-zinc-700">
+                      {property.units.length}{" "}
+                      {property.units.length === 1 ? "unit" : "units"}
+                    </span>
+                    <span className="rounded-full bg-zinc-100 px-2.5 py-0.5 text-xs font-medium text-zinc-700">
+                      {occupiedUnits} occupied
+                    </span>
+                    <span className="rounded-full bg-zinc-900 px-2.5 py-0.5 text-xs font-medium text-white">
+                      {tenantCount} {tenantCount === 1 ? "tenant" : "tenants"}
+                    </span>
+                  </span>
                 </span>
-              </span>
-            </button>
+                <ChevronDown
+                  className={cn(
+                    "h-5 w-5 shrink-0 text-zinc-400 transition-transform",
+                    isExpanded ? "rotate-180" : "rotate-0",
+                  )}
+                  aria-hidden
+                />
+              </button>
 
-            {isExpanded ? (
-              <div className="ml-7 space-y-4 border-l border-zinc-100 pb-2 pl-4">
-                {property.units.map((unit) => (
-                  <div key={`${property.propertyId}-${unit.unitLabel}`}>
-                    <p className="text-xs font-semibold uppercase tracking-wide text-zinc-500">
-                      {unit.unitLabel === "— No unit"
-                        ? "No unit assigned"
-                        : `Apartment ${unit.unitLabel}`}
-                    </p>
-                    {unit.tenants.length === 0 ? (
-                      <p className="mt-2 text-xs text-zinc-400">No tenants</p>
-                    ) : (
-                      <ul className="mt-2 space-y-2">
-                        {unit.tenants.map((tenant) => (
-                          <li key={tenant.id}>
-                            <TenantRowCard
-                              tenant={tenant}
-                              onEdit={onEdit}
-                              onArchive={onArchive}
-                              onTenantUpdated={onTenantUpdated}
-                              isPending={isPending}
-                            />
-                          </li>
-                        ))}
-                      </ul>
-                    )}
-                  </div>
-                ))}
-              </div>
-            ) : null}
-          </section>
-        );
-      })}
+              {isExpanded ? (
+                <div className="space-y-3 border-t border-zinc-100 bg-zinc-50/60 px-4 py-4 sm:px-5">
+                  {property.units.map((unit) => (
+                    <UnitSection
+                      key={`${property.propertyId}-${unit.unitLabel}`}
+                      unit={unit}
+                      onEdit={onEdit}
+                      onArchive={onArchive}
+                      onTenantUpdated={onTenantUpdated}
+                      isPending={isPending}
+                    />
+                  ))}
+                </div>
+              ) : null}
+            </section>
+          );
+        })}
+      </div>
     </div>
   );
 }
