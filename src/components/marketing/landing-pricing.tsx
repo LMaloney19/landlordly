@@ -19,7 +19,7 @@ const plans = [
       "Expenses with categories",
       "Maintenance requests",
       "P&L reports & Schedule E export",
-      "Your data in your Supabase project",
+      "Secure cloud backup of your records",
     ],
   },
   {

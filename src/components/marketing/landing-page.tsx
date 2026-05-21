@@ -233,12 +233,12 @@ export function LandingPage({ isSignedIn }: LandingPageProps) {
             </span>
             <div>
               <h2 className="text-xl font-semibold text-zinc-900">
-                Your data stays in your Supabase project
+                Your portfolio data stays private and secure
               </h2>
               <p className="mt-2 max-w-2xl text-sm leading-relaxed text-zinc-600">
-                Sign in with email, row-level security on the database, and no
-                selling of tenant information. You control the backend; Landlordly
-                is the focused interface on top.
+                Sign in with your own account. Tenant and financial records are
+                protected behind secure login — we don&apos;t sell your data or
+                share it with advertisers.
               </p>
             </div>
           </div>
