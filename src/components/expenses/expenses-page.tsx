@@ -25,6 +25,7 @@ import {
   type PropertyRow,
 } from "@/lib/properties";
 import { createClient } from "@/lib/supabase/client";
+import type { SupabaseClient } from "@supabase/supabase-js";
 import { formatCurrency } from "@/lib/utils";
 import type { Expense, ExpenseCategory, Property } from "@/types";
 
@@ -61,6 +62,26 @@ function newDraft(properties: Property[]): ExpenseDraft {
   };
 }
 
+function draftFromExpense(expense: Expense): ExpenseDraft {
+  return {
+    date: expense.date,
+    propertyId: expense.propertyId,
+    unitLabel: expense.unitLabel ?? "",
+    category: expense.category,
+    amount: String(expense.amount),
+    vendor: expense.vendor,
+    notes: expense.notes ?? "",
+  };
+}
+
+async function deleteReceiptFromStorage(
+  supabase: SupabaseClient,
+  path: string | null,
+) {
+  if (!path) return;
+  await supabase.storage.from(EXPENSE_RECEIPT_BUCKET).remove([path]);
+}
+
 export function ExpensesPageClient({
   properties: initialProperties,
   initialExpenses,
@@ -76,10 +97,13 @@ export function ExpensesPageClient({
   );
   const [search, setSearch] = useState("");
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
+  const [editingExpense, setEditingExpense] = useState<Expense | null>(null);
   const [draft, setDraft] = useState<ExpenseDraft>(() => newDraft(initialProperties));
   const [receiptFile, setReceiptFile] = useState<File | null>(null);
+  const [clearReceipt, setClearReceipt] = useState(false);
   const [receiptError, setReceiptError] = useState<string | null>(null);
   const [formError, setFormError] = useState<string | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
 
   const selectedDraftProperty = useMemo(
@@ -221,15 +245,68 @@ export function ExpensesPageClient({
     setFormError(null);
     setReceiptError(null);
     setReceiptFile(null);
+    setClearReceipt(false);
+    setEditingExpense(null);
     setDraft(newDraft(properties));
+    setIsDrawerOpen(true);
+  }
+
+  function openEditDrawer(expense: Expense) {
+    setFormError(null);
+    setReceiptError(null);
+    setReceiptFile(null);
+    setClearReceipt(false);
+    setEditingExpense(expense);
+    setDraft(draftFromExpense(expense));
     setIsDrawerOpen(true);
   }
 
   function closeDrawer() {
     setIsDrawerOpen(false);
+    setEditingExpense(null);
     setFormError(null);
     setReceiptError(null);
     setReceiptFile(null);
+    setClearReceipt(false);
+  }
+
+  function handleDelete(expense: Expense) {
+    const confirmed = confirm(
+      `Delete expense for "${expense.vendor}" (${formatCurrency(expense.amount)})?\n\nThis cannot be undone.`,
+    );
+    if (!confirmed) return;
+
+    setActionError(null);
+    setFormError(null);
+    startTransition(async () => {
+      const supabase = createClient();
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+
+      if (!user) {
+        setActionError(signedOutSaveMessage());
+        return;
+      }
+
+      await deleteReceiptFromStorage(supabase, expense.receiptPath);
+
+      const { error } = await supabase
+        .from("expenses")
+        .delete()
+        .eq("id", expense.id)
+        .eq("user_id", user.id);
+
+      if (error) {
+        setActionError(error.message);
+        return;
+      }
+
+      setExpenses((current) => current.filter((item) => item.id !== expense.id));
+      if (editingExpense?.id === expense.id) {
+        closeDrawer();
+      }
+    });
   }
 
   function updateDraft(patch: Partial<ExpenseDraft>) {
@@ -280,46 +357,73 @@ export function ExpensesPageClient({
         return;
       }
 
-      const expenseId = crypto.randomUUID();
-      let receiptPath: string | null = null;
-      let receiptMimeType: string | null = null;
-      let receiptFileName: string | null = null;
+      const isEditing = editingExpense !== null;
+      const expenseId = isEditing ? editingExpense.id : crypto.randomUUID();
 
-      if (receiptFile) {
-        receiptPath = buildExpenseReceiptPath(user.id, expenseId, receiptFile.name);
-        receiptMimeType = receiptFile.type || null;
-        receiptFileName = receiptFile.name;
+      let receiptPath = isEditing ? editingExpense.receiptPath : null;
+      let receiptMimeType = isEditing ? editingExpense.receiptMimeType : null;
+      let receiptFileName = isEditing ? editingExpense.receiptFileName : null;
 
+      if (clearReceipt && !receiptFile) {
+        await deleteReceiptFromStorage(supabase, receiptPath);
+        receiptPath = null;
+        receiptMimeType = null;
+        receiptFileName = null;
+      } else if (receiptFile) {
+        const nextPath = buildExpenseReceiptPath(user.id, expenseId, receiptFile.name);
         const { error: uploadError } = await supabase.storage
           .from(EXPENSE_RECEIPT_BUCKET)
-          .upload(receiptPath, receiptFile, { upsert: false });
+          .upload(nextPath, receiptFile, { upsert: true });
 
         if (uploadError) {
           setReceiptError(uploadError.message);
           return;
         }
+
+        if (
+          isEditing &&
+          editingExpense.receiptPath &&
+          editingExpense.receiptPath !== nextPath
+        ) {
+          await deleteReceiptFromStorage(supabase, editingExpense.receiptPath);
+        }
+
+        receiptPath = nextPath;
+        receiptMimeType = receiptFile.type || null;
+        receiptFileName = receiptFile.name;
       }
 
       const unitLabel = draft.unitLabel.trim() || null;
+      const payload = {
+        property_id: draft.propertyId,
+        unit_label: unitLabel,
+        expense_date: draft.date,
+        category: draft.category,
+        amount,
+        vendor: draft.vendor.trim(),
+        notes: draft.notes.trim() || null,
+        receipt_path: receiptPath,
+        receipt_mime_type: receiptMimeType,
+        receipt_file_name: receiptFileName,
+      };
 
-      const { data, error } = await supabase
-        .from("expenses")
-        .insert({
-          id: expenseId,
-          user_id: user.id,
-          property_id: draft.propertyId,
-          unit_label: unitLabel,
-          expense_date: draft.date,
-          category: draft.category,
-          amount,
-          vendor: draft.vendor.trim(),
-          notes: draft.notes.trim() || null,
-          receipt_path: receiptPath,
-          receipt_mime_type: receiptMimeType,
-          receipt_file_name: receiptFileName,
-        })
-        .select(`*, properties(${PROPERTY_ADDRESS_SELECT})`)
-        .single();
+      const { data, error } = isEditing
+        ? await supabase
+            .from("expenses")
+            .update(payload)
+            .eq("id", expenseId)
+            .eq("user_id", user.id)
+            .select(`*, properties(${PROPERTY_ADDRESS_SELECT})`)
+            .single()
+        : await supabase
+            .from("expenses")
+            .insert({
+              id: expenseId,
+              user_id: user.id,
+              ...payload,
+            })
+            .select(`*, properties(${PROPERTY_ADDRESS_SELECT})`)
+            .single();
 
       if (error || !data) {
         const message = error?.message ?? "Expense could not be saved.";
@@ -333,7 +437,12 @@ export function ExpensesPageClient({
         return;
       }
 
-      setExpenses((current) => [rowToExpense(data as ExpenseRow), ...current]);
+      const saved = rowToExpense(data as ExpenseRow);
+      setExpenses((current) =>
+        isEditing
+          ? current.map((item) => (item.id === saved.id ? saved : item))
+          : [saved, ...current],
+      );
       closeDrawer();
     });
   }
@@ -460,7 +569,13 @@ export function ExpensesPageClient({
             </p>
           </div>
         ) : (
-          <ExpensesGroupedList groups={groupedExpenses} collapseKey={search} />
+          <ExpensesGroupedList
+            groups={groupedExpenses}
+            collapseKey={search}
+            onEdit={openEditDrawer}
+            onDelete={handleDelete}
+            isPending={isPending}
+          />
         )}
       </section>
 
@@ -476,10 +591,12 @@ export function ExpensesPageClient({
             <header className="mb-6 flex items-start justify-between gap-4">
               <div>
                 <h2 className="text-lg font-semibold tracking-tight text-zinc-900">
-                  Log expense
+                  {editingExpense ? "Edit expense" : "Log expense"}
                 </h2>
                 <p className="mt-1 text-sm text-zinc-500">
-                  Assign to a unit or whole property. Totals roll up to the building.
+                  {editingExpense
+                    ? "Update details or replace the receipt."
+                    : "Assign to a unit or whole property. Totals roll up to the building."}
                 </p>
               </div>
               <button
@@ -615,7 +732,17 @@ export function ExpensesPageClient({
 
                   <ExpenseReceiptField
                     file={receiptFile}
-                    onFileChange={setReceiptFile}
+                    onFileChange={(file) => {
+                      setReceiptFile(file);
+                      if (file) setClearReceipt(false);
+                    }}
+                    existingReceipt={
+                      editingExpense?.receiptPath
+                        ? { fileName: editingExpense.receiptFileName }
+                        : null
+                    }
+                    clearExisting={clearReceipt}
+                    onClearExisting={() => setClearReceipt(true)}
                     disabled={isPending}
                     error={receiptError}
                   />
@@ -627,13 +754,29 @@ export function ExpensesPageClient({
                   </p>
                 ) : null}
 
-                <button
-                  type="submit"
-                  disabled={isPending}
-                  className="mt-6 w-full rounded-md bg-zinc-900 px-4 py-2.5 text-sm font-medium text-white transition-colors hover:bg-zinc-800 disabled:opacity-60"
-                >
-                  {isPending ? "Saving..." : "Save expense"}
-                </button>
+                <div className="mt-6 space-y-2">
+                  <button
+                    type="submit"
+                    disabled={isPending}
+                    className="w-full rounded-md bg-zinc-900 px-4 py-2.5 text-sm font-medium text-white transition-colors hover:bg-zinc-800 disabled:opacity-60"
+                  >
+                    {isPending
+                      ? "Saving..."
+                      : editingExpense
+                        ? "Save changes"
+                        : "Save expense"}
+                  </button>
+                  {editingExpense ? (
+                    <button
+                      type="button"
+                      disabled={isPending}
+                      onClick={() => handleDelete(editingExpense)}
+                      className="w-full rounded-md border border-red-200 px-4 py-2.5 text-sm font-medium text-red-600 hover:bg-red-50 disabled:opacity-60"
+                    >
+                      Delete expense
+                    </button>
+                  ) : null}
+                </div>
               </form>
             )}
           </aside>

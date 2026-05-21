@@ -6,6 +6,8 @@ import {
   DoorOpen,
   FileText,
   ImageIcon,
+  Pencil,
+  Trash2,
 } from "lucide-react";
 import { useEffect, useState, useTransition } from "react";
 import { getExpenseReceiptUrl } from "@/app/actions/expenses";
@@ -22,6 +24,9 @@ import type { Expense } from "@/types";
 type ExpensesGroupedListProps = {
   groups: ExpensePropertyGroup[];
   collapseKey?: string;
+  onEdit: (expense: Expense) => void;
+  onDelete: (expense: Expense) => void;
+  isPending: boolean;
 };
 
 function formatDate(isoDate: string) {
@@ -75,19 +80,57 @@ function ReceiptButton({ expense }: { expense: Expense }) {
   );
 }
 
-function ExpenseCard({ expense }: { expense: Expense }) {
+function ExpenseCard({
+  expense,
+  onEdit,
+  onDelete,
+  isPending,
+}: {
+  expense: Expense;
+  onEdit: (expense: Expense) => void;
+  onDelete: (expense: Expense) => void;
+  isPending: boolean;
+}) {
   return (
     <article className="rounded-lg border border-zinc-200 bg-white p-4 shadow-sm">
       <div className="flex flex-wrap items-start justify-between gap-3">
-        <div className="min-w-0">
+        <div className="min-w-0 flex-1">
           <p className="text-sm font-semibold text-zinc-900">{expense.vendor}</p>
           <p className="mt-0.5 text-xs text-zinc-500">
             {formatDate(expense.date)} · {expense.category}
           </p>
         </div>
-        <p className="shrink-0 text-sm font-semibold tabular-nums text-zinc-900">
-          {formatCurrency(expense.amount)}
-        </p>
+        <div className="flex shrink-0 items-start gap-2">
+          <p className="text-sm font-semibold tabular-nums text-zinc-900">
+            {formatCurrency(expense.amount)}
+          </p>
+          <div className="flex gap-1">
+            <button
+              type="button"
+              disabled={isPending}
+              onClick={(event) => {
+                event.stopPropagation();
+                onEdit(expense);
+              }}
+              className="rounded-md p-1.5 text-zinc-500 hover:bg-zinc-100 hover:text-zinc-800 disabled:opacity-50"
+              aria-label={`Edit ${expense.vendor}`}
+            >
+              <Pencil className="h-4 w-4" />
+            </button>
+            <button
+              type="button"
+              disabled={isPending}
+              onClick={(event) => {
+                event.stopPropagation();
+                onDelete(expense);
+              }}
+              className="rounded-md p-1.5 text-zinc-500 hover:bg-red-50 hover:text-red-600 disabled:opacity-50"
+              aria-label={`Delete ${expense.vendor}`}
+            >
+              <Trash2 className="h-4 w-4" />
+            </button>
+          </div>
+        </div>
       </div>
       {expense.notes ? (
         <p className="mt-2 text-sm text-zinc-600">{expense.notes}</p>
@@ -99,7 +142,17 @@ function ExpenseCard({ expense }: { expense: Expense }) {
   );
 }
 
-function UnitSection({ unit }: { unit: ExpenseUnitGroup }) {
+function UnitSection({
+  unit,
+  onEdit,
+  onDelete,
+  isPending,
+}: {
+  unit: ExpenseUnitGroup;
+  onEdit: (expense: Expense) => void;
+  onDelete: (expense: Expense) => void;
+  isPending: boolean;
+}) {
   const isWholeProperty = unit.unitLabel === EXPENSE_WHOLE_PROPERTY_LABEL;
 
   return (
@@ -141,7 +194,12 @@ function UnitSection({ unit }: { unit: ExpenseUnitGroup }) {
         <ul className="space-y-3 p-3">
           {unit.expenses.map((expense) => (
             <li key={expense.id}>
-              <ExpenseCard expense={expense} />
+              <ExpenseCard
+                expense={expense}
+                onEdit={onEdit}
+                onDelete={onDelete}
+                isPending={isPending}
+              />
             </li>
           ))}
         </ul>
@@ -153,6 +211,9 @@ function UnitSection({ unit }: { unit: ExpenseUnitGroup }) {
 export function ExpensesGroupedList({
   groups,
   collapseKey = "",
+  onEdit,
+  onDelete,
+  isPending,
 }: ExpensesGroupedListProps) {
   const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
 
@@ -268,6 +329,9 @@ export function ExpensesGroupedList({
                     <UnitSection
                       key={`${property.propertyId}-${unit.unitLabel}`}
                       unit={unit}
+                      onEdit={onEdit}
+                      onDelete={onDelete}
+                      isPending={isPending}
                     />
                   ))}
                 </div>
