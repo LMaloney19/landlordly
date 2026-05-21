@@ -342,21 +342,14 @@ export function TenantsGroupedList({
   const [expandedIds, setExpandedIds] = useState<Set<string>>(() => new Set());
 
   useEffect(() => {
-    if (groups.length === 0) {
-      setExpandedIds(new Set());
-      return;
-    }
     setExpandedIds((current) => {
-      if (current.size > 0) {
-        const next = new Set<string>();
-        for (const id of current) {
-          if (groups.some((group) => group.propertyId === id)) {
-            next.add(id);
-          }
+      const next = new Set<string>();
+      for (const id of current) {
+        if (groups.some((group) => group.propertyId === id)) {
+          next.add(id);
         }
-        if (next.size > 0) return next;
       }
-      return new Set([groups[0].propertyId]);
+      return next;
     });
   }, [groups]);
 
