@@ -1,8 +1,8 @@
 "use client";
 
-import { Dog, Pencil, Trash2 } from "lucide-react";
+import { ChevronDown, Dog, Pencil, Trash2 } from "lucide-react";
 import { useRouter } from "next/navigation";
-import { useState, useTransition } from "react";
+import { useEffect, useState, useTransition } from "react";
 import { signedOutSaveMessage } from "@/lib/dev-bypass";
 import { PROPERTY_ADDRESS_SELECT } from "@/lib/properties";
 import { createClient } from "@/lib/supabase/client";
@@ -328,6 +328,10 @@ function TenantRowCard({
   );
 }
 
+function tenantCountForProperty(property: TenantPropertyGroup) {
+  return property.units.reduce((sum, unit) => sum + unit.tenants.length, 0);
+}
+
 export function TenantsGroupedList({
   groups,
   onEdit,
@@ -335,47 +339,111 @@ export function TenantsGroupedList({
   onTenantUpdated,
   isPending,
 }: TenantsGroupedListProps) {
+  const [expandedIds, setExpandedIds] = useState<Set<string>>(() => new Set());
+
+  useEffect(() => {
+    if (groups.length === 0) {
+      setExpandedIds(new Set());
+      return;
+    }
+    setExpandedIds((current) => {
+      if (current.size > 0) {
+        const next = new Set<string>();
+        for (const id of current) {
+          if (groups.some((group) => group.propertyId === id)) {
+            next.add(id);
+          }
+        }
+        if (next.size > 0) return next;
+      }
+      return new Set([groups[0].propertyId]);
+    });
+  }, [groups]);
+
+  function toggleProperty(propertyId: string) {
+    setExpandedIds((current) => {
+      const next = new Set(current);
+      if (next.has(propertyId)) {
+        next.delete(propertyId);
+      } else {
+        next.add(propertyId);
+      }
+      return next;
+    });
+  }
+
   if (groups.length === 0) {
     return null;
   }
 
   return (
     <div className="divide-y divide-zinc-200">
-      {groups.map((property) => (
-        <section key={property.propertyId} className="px-4 py-5 sm:px-6">
-          <h3 className="text-sm font-semibold text-zinc-900">
-            {property.propertyAddress}
-          </h3>
-          <div className="mt-4 space-y-4">
-            {property.units.map((unit) => (
-              <div key={`${property.propertyId}-${unit.unitLabel}`}>
-                <p className="text-xs font-semibold uppercase tracking-wide text-zinc-500">
-                  {unit.unitLabel === "— No unit"
-                    ? "No unit assigned"
-                    : `Apartment ${unit.unitLabel}`}
-                </p>
-                {unit.tenants.length === 0 ? (
-                  <p className="mt-2 text-xs text-zinc-400">No tenants</p>
-                ) : (
-                  <ul className="mt-2 space-y-2">
-                    {unit.tenants.map((tenant) => (
-                      <li key={tenant.id}>
-                        <TenantRowCard
-                          tenant={tenant}
-                          onEdit={onEdit}
-                          onArchive={onArchive}
-                          onTenantUpdated={onTenantUpdated}
-                          isPending={isPending}
-                        />
-                      </li>
-                    ))}
-                  </ul>
+      {groups.map((property) => {
+        const isExpanded = expandedIds.has(property.propertyId);
+        const tenantCount = tenantCountForProperty(property);
+        const unitCount = property.units.filter((u) => u.tenants.length > 0).length;
+
+        return (
+          <section key={property.propertyId} className="px-4 py-3 sm:px-6">
+            <button
+              type="button"
+              onClick={() => toggleProperty(property.propertyId)}
+              aria-expanded={isExpanded}
+              className="flex w-full items-start gap-3 rounded-lg px-2 py-2 text-left transition-colors hover:bg-zinc-50"
+            >
+              <ChevronDown
+                className={cn(
+                  "mt-0.5 h-4 w-4 shrink-0 text-zinc-500 transition-transform",
+                  isExpanded ? "rotate-0" : "-rotate-90",
                 )}
+                aria-hidden
+              />
+              <span className="min-w-0 flex-1">
+                <span className="block text-sm font-semibold text-zinc-900">
+                  {property.propertyAddress}
+                </span>
+                <span className="mt-0.5 block text-xs text-zinc-500">
+                  {tenantCount} {tenantCount === 1 ? "tenant" : "tenants"}
+                  {unitCount > 0
+                    ? ` · ${unitCount} ${unitCount === 1 ? "unit" : "units"}`
+                    : ""}
+                </span>
+              </span>
+            </button>
+
+            {isExpanded ? (
+              <div className="ml-7 space-y-4 border-l border-zinc-100 pb-2 pl-4">
+                {property.units.map((unit) => (
+                  <div key={`${property.propertyId}-${unit.unitLabel}`}>
+                    <p className="text-xs font-semibold uppercase tracking-wide text-zinc-500">
+                      {unit.unitLabel === "— No unit"
+                        ? "No unit assigned"
+                        : `Apartment ${unit.unitLabel}`}
+                    </p>
+                    {unit.tenants.length === 0 ? (
+                      <p className="mt-2 text-xs text-zinc-400">No tenants</p>
+                    ) : (
+                      <ul className="mt-2 space-y-2">
+                        {unit.tenants.map((tenant) => (
+                          <li key={tenant.id}>
+                            <TenantRowCard
+                              tenant={tenant}
+                              onEdit={onEdit}
+                              onArchive={onArchive}
+                              onTenantUpdated={onTenantUpdated}
+                              isPending={isPending}
+                            />
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                  </div>
+                ))}
               </div>
-            ))}
-          </div>
-        </section>
-      ))}
+            ) : null}
+          </section>
+        );
+      })}
     </div>
   );
 }
