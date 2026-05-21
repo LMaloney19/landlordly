@@ -1,5 +1,6 @@
 import { Home } from "lucide-react";
 import { LoginForm } from "@/components/auth/login-form";
+import { safeRedirectPath } from "@/lib/safe-redirect";
 
 export const dynamic = "force-dynamic";
 
@@ -9,7 +10,7 @@ type LoginPageProps = {
 
 export default async function LoginPage({ searchParams }: LoginPageProps) {
   const { redirect: redirectTo, error: authError } = await searchParams;
-  const destination = redirectTo?.startsWith("/") ? redirectTo : "/";
+  const destination = safeRedirectPath(redirectTo);
 
   return (
     <div className="flex min-h-screen items-center justify-center bg-zinc-50 px-4">

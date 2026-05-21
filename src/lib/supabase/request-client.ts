@@ -5,6 +5,7 @@ import {
 } from "@supabase/ssr";
 import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
+import { getSupabaseAnonKey, getSupabaseUrl } from "@/lib/supabase/config";
 import { routeHandlerAuthOptions } from "@/lib/supabase/server-options";
 
 type PendingCookie = {
@@ -17,8 +18,8 @@ export function createRequestSupabaseClient(request: NextRequest) {
   const pendingCookies: PendingCookie[] = [];
 
   const supabase = createServerClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    getSupabaseUrl(),
+    getSupabaseAnonKey(),
     {
       auth: routeHandlerAuthOptions,
       cookies: {
