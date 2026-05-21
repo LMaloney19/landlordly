@@ -11,6 +11,12 @@ import { createPageClient } from "@/lib/supabase/page";
 export const dynamic = "force-dynamic";
 
 function migrationHint(error: string) {
+  if (
+    error.includes("unit_label") ||
+    error.includes("receipt_path")
+  ) {
+    return "Run supabase/migrations/20250516040000_expense_receipts_and_units.sql in the SQL Editor.";
+  }
   if (error.includes("expenses") || error.includes("relation")) {
     return "Expenses table not found. Run supabase/migrations/20250516020000_expenses.sql in the SQL Editor.";
   }

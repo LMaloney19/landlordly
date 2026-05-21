@@ -104,11 +104,15 @@ export type Expense = {
   id: string;
   propertyId: string;
   propertyAddress: string;
+  unitLabel: string | null;
   date: string;
   category: ExpenseCategory;
   amount: number;
   vendor: string;
   notes: string | null;
+  receiptPath: string | null;
+  receiptMimeType: string | null;
+  receiptFileName: string | null;
 };
 
 export type DashboardStats = {

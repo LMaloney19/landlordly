@@ -2,11 +2,21 @@
 
 import { useEffect, useMemo, useState, useTransition, type FormEvent } from "react";
 import { PageHeader } from "@/components/ui/page-header";
+import { ExpenseReceiptField } from "@/components/expenses/expense-receipt-field";
+import { ExpensesGroupedList } from "@/components/expenses/expenses-grouped-list";
 import {
   EXPENSE_CATEGORIES,
+  EXPENSE_WHOLE_PROPERTY_LABEL,
+  expenseUnitKey,
+  groupExpensesByPropertyAndUnit,
   rowToExpense,
   type ExpenseRow,
 } from "@/lib/expenses";
+import {
+  buildExpenseReceiptPath,
+  EXPENSE_RECEIPT_BUCKET,
+  EXPENSE_RECEIPT_MAX_BYTES,
+} from "@/lib/expense-receipts";
 import { hasDevBypass, signedOutSaveMessage } from "@/lib/dev-bypass";
 import {
   PROPERTY_ADDRESS_SELECT,
@@ -24,12 +34,10 @@ type ExpensesPageProps = {
   loadError?: string;
 };
 
-type SortKey = "date" | "property" | "category" | "amount" | "vendor";
-type SortDirection = "asc" | "desc";
-
 type ExpenseDraft = {
   date: string;
   propertyId: string;
+  unitLabel: string;
   category: ExpenseCategory;
   amount: string;
   vendor: string;
@@ -40,46 +48,17 @@ function todayIso() {
   return new Date().toISOString().slice(0, 10);
 }
 
-function formatDate(isoDate: string) {
-  return new Date(isoDate + "T00:00:00").toLocaleDateString("en-US", {
-    month: "short",
-    day: "numeric",
-    year: "numeric",
-  });
-}
-
 function newDraft(properties: Property[]): ExpenseDraft {
+  const property = properties[0];
   return {
     date: todayIso(),
-    propertyId: properties[0]?.id ?? "",
+    propertyId: property?.id ?? "",
+    unitLabel: "",
     category: "Repairs",
     amount: "",
     vendor: "",
     notes: "",
   };
-}
-
-function compareExpenses(a: Expense, b: Expense, key: SortKey) {
-  if (key === "amount") return a.amount - b.amount;
-
-  const aValue =
-    key === "date"
-      ? a.date
-      : key === "property"
-        ? a.propertyAddress
-        : key === "category"
-          ? a.category
-          : a.vendor;
-  const bValue =
-    key === "date"
-      ? b.date
-      : key === "property"
-        ? b.propertyAddress
-        : key === "category"
-          ? b.category
-          : b.vendor;
-
-  return aValue.localeCompare(bValue);
 }
 
 export function ExpensesPageClient({
@@ -91,15 +70,22 @@ export function ExpensesPageClient({
   const [expenses, setExpenses] = useState<Expense[]>(initialExpenses);
   const [clientLoadError, setClientLoadError] = useState<string | null>(null);
   const [propertyFilter, setPropertyFilter] = useState("all");
+  const [unitFilter, setUnitFilter] = useState("all");
   const [categoryFilter, setCategoryFilter] = useState<ExpenseCategory | "all">(
     "all",
   );
-  const [sortKey, setSortKey] = useState<SortKey>("date");
-  const [sortDirection, setSortDirection] = useState<SortDirection>("desc");
+  const [search, setSearch] = useState("");
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
   const [draft, setDraft] = useState<ExpenseDraft>(() => newDraft(initialProperties));
+  const [receiptFile, setReceiptFile] = useState<File | null>(null);
+  const [receiptError, setReceiptError] = useState<string | null>(null);
   const [formError, setFormError] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
+
+  const selectedDraftProperty = useMemo(
+    () => properties.find((property) => property.id === draft.propertyId),
+    [draft.propertyId, properties],
+  );
 
   useEffect(() => {
     let cancelled = false;
@@ -136,12 +122,14 @@ export function ExpensesPageClient({
       if (cancelled) return;
 
       if (propertiesResult.error || expensesResult.error) {
+        const message =
+          propertiesResult.error?.message ?? expensesResult.error?.message ?? "";
         setClientLoadError(
-          propertiesResult.error?.message ??
-            (expensesResult.error?.message.includes("relation")
+          message.includes("unit_label") || message.includes("receipt_path")
+            ? "Run supabase/migrations/20250516040000_expense_receipts_and_units.sql in Supabase."
+            : message.includes("relation")
               ? "Expenses table not found. Run supabase/migrations/20250516020000_expenses.sql in Supabase."
-              : expensesResult.error?.message) ??
-            "Could not load expenses.",
+              : message || "Could not load expenses.",
         );
         return;
       }
@@ -166,42 +154,73 @@ export function ExpensesPageClient({
     };
   }, []);
 
+  const unitFilterOptions = useMemo(() => {
+    if (propertyFilter === "all") return [];
+    const property = properties.find((item) => item.id === propertyFilter);
+    if (!property) return [];
+
+    const labels = new Set<string>([EXPENSE_WHOLE_PROPERTY_LABEL]);
+    for (const unit of property.units) {
+      labels.add(unit.unitLabel);
+    }
+    for (const expense of expenses) {
+      if (expense.propertyId === propertyFilter) {
+        labels.add(expenseUnitKey(expense.unitLabel));
+      }
+    }
+
+    return [...labels].sort((a, b) => {
+      if (a === EXPENSE_WHOLE_PROPERTY_LABEL) return -1;
+      if (b === EXPENSE_WHOLE_PROPERTY_LABEL) return 1;
+      return a.localeCompare(b, undefined, { numeric: true });
+    });
+  }, [expenses, properties, propertyFilter]);
+
+  useEffect(() => {
+    setUnitFilter("all");
+  }, [propertyFilter]);
+
   const filteredExpenses = useMemo(() => {
+    const query = search.trim().toLowerCase();
+
     return expenses
       .filter((expense) =>
         propertyFilter === "all" ? true : expense.propertyId === propertyFilter,
       )
       .filter((expense) =>
+        unitFilter === "all"
+          ? true
+          : expenseUnitKey(expense.unitLabel) === unitFilter,
+      )
+      .filter((expense) =>
         categoryFilter === "all" ? true : expense.category === categoryFilter,
       )
-      .sort((a, b) => {
-        const result = compareExpenses(a, b, sortKey);
-        return sortDirection === "asc" ? result : -result;
+      .filter((expense) => {
+        if (!query) return true;
+        return (
+          expense.vendor.toLowerCase().includes(query) ||
+          expense.category.toLowerCase().includes(query) ||
+          expense.notes?.toLowerCase().includes(query) ||
+          expense.propertyAddress.toLowerCase().includes(query) ||
+          expense.unitLabel?.toLowerCase().includes(query)
+        );
       });
-  }, [categoryFilter, expenses, propertyFilter, sortDirection, sortKey]);
+  }, [categoryFilter, expenses, propertyFilter, search, unitFilter]);
 
-  const total = filteredExpenses.reduce(
+  const groupedExpenses = useMemo(
+    () => groupExpensesByPropertyAndUnit(filteredExpenses, properties),
+    [filteredExpenses, properties],
+  );
+
+  const filteredTotal = filteredExpenses.reduce(
     (sum, expense) => sum + expense.amount,
     0,
   );
 
-  function setSort(nextKey: SortKey) {
-    if (sortKey === nextKey) {
-      setSortDirection((current) => (current === "asc" ? "desc" : "asc"));
-      return;
-    }
-
-    setSortKey(nextKey);
-    setSortDirection(nextKey === "amount" ? "desc" : "asc");
-  }
-
-  function sortLabel(key: SortKey) {
-    if (sortKey !== key) return "";
-    return sortDirection === "asc" ? " ↑" : " ↓";
-  }
-
   function openDrawer() {
     setFormError(null);
+    setReceiptError(null);
+    setReceiptFile(null);
     setDraft(newDraft(properties));
     setIsDrawerOpen(true);
   }
@@ -209,15 +228,24 @@ export function ExpensesPageClient({
   function closeDrawer() {
     setIsDrawerOpen(false);
     setFormError(null);
+    setReceiptError(null);
+    setReceiptFile(null);
   }
 
   function updateDraft(patch: Partial<ExpenseDraft>) {
-    setDraft((current) => ({ ...current, ...patch }));
+    setDraft((current) => {
+      const next = { ...current, ...patch };
+      if (patch.propertyId !== undefined && patch.propertyId !== current.propertyId) {
+        next.unitLabel = "";
+      }
+      return next;
+    });
   }
 
   function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setFormError(null);
+    setReceiptError(null);
 
     if (!draft.date) {
       setFormError("Expense date is required.");
@@ -236,6 +264,10 @@ export function ExpensesPageClient({
       setFormError("Vendor/payee name is required.");
       return;
     }
+    if (receiptFile && receiptFile.size > EXPENSE_RECEIPT_MAX_BYTES) {
+      setReceiptError("Receipt must be 10 MB or smaller.");
+      return;
+    }
 
     startTransition(async () => {
       const supabase = createClient();
@@ -248,25 +280,55 @@ export function ExpensesPageClient({
         return;
       }
 
+      const expenseId = crypto.randomUUID();
+      let receiptPath: string | null = null;
+      let receiptMimeType: string | null = null;
+      let receiptFileName: string | null = null;
+
+      if (receiptFile) {
+        receiptPath = buildExpenseReceiptPath(user.id, expenseId, receiptFile.name);
+        receiptMimeType = receiptFile.type || null;
+        receiptFileName = receiptFile.name;
+
+        const { error: uploadError } = await supabase.storage
+          .from(EXPENSE_RECEIPT_BUCKET)
+          .upload(receiptPath, receiptFile, { upsert: false });
+
+        if (uploadError) {
+          setReceiptError(uploadError.message);
+          return;
+        }
+      }
+
+      const unitLabel = draft.unitLabel.trim() || null;
+
       const { data, error } = await supabase
         .from("expenses")
         .insert({
+          id: expenseId,
           user_id: user.id,
           property_id: draft.propertyId,
+          unit_label: unitLabel,
           expense_date: draft.date,
           category: draft.category,
           amount,
           vendor: draft.vendor.trim(),
           notes: draft.notes.trim() || null,
+          receipt_path: receiptPath,
+          receipt_mime_type: receiptMimeType,
+          receipt_file_name: receiptFileName,
         })
         .select(`*, properties(${PROPERTY_ADDRESS_SELECT})`)
         .single();
 
       if (error || !data) {
+        const message = error?.message ?? "Expense could not be saved.";
         setFormError(
-          error?.message.includes("relation")
-            ? "Expenses table not found. Run the expenses SQL migration in Supabase."
-            : error?.message ?? "Expense could not be saved.",
+          message.includes("unit_label") || message.includes("receipt_path")
+            ? "Run supabase/migrations/20250516040000_expense_receipts_and_units.sql in Supabase."
+            : message.includes("relation")
+              ? "Expenses table not found. Run the expenses SQL migration in Supabase."
+              : message,
         );
         return;
       }
@@ -276,12 +338,15 @@ export function ExpensesPageClient({
     });
   }
 
+  const inputClass =
+    "mt-1.5 w-full rounded-md border border-zinc-200 bg-white px-3 py-2 text-sm focus:border-zinc-400 focus:outline-none focus:ring-2 focus:ring-zinc-200 disabled:opacity-60";
+
   return (
     <>
       <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
         <PageHeader
           title="Expenses"
-          description="Track deductible costs across properties and categories."
+          description="Track costs by property and unit — attach receipts and roll up property totals."
         />
         <button
           type="button"
@@ -302,11 +367,12 @@ export function ExpensesPageClient({
       ) : null}
 
       <section className="overflow-hidden rounded-lg border border-zinc-200 bg-white shadow-sm">
-        <header className="grid gap-3 border-b border-zinc-200 px-6 py-4 md:grid-cols-[1fr_240px_220px] md:items-end">
+        <header className="grid gap-3 border-b border-zinc-200 px-6 py-4 lg:grid-cols-[1fr_repeat(3,minmax(0,180px))] lg:items-end">
           <div>
-            <h2 className="text-sm font-semibold text-zinc-900">All expenses</h2>
+            <h2 className="text-sm font-semibold text-zinc-900">Portfolio expenses</h2>
             <p className="mt-0.5 text-sm text-zinc-500">
-              {filteredExpenses.length} of {expenses.length} expenses
+              {filteredExpenses.length} of {expenses.length} expenses ·{" "}
+              {formatCurrency(filteredTotal)} filtered total
             </p>
           </div>
           <label>
@@ -322,6 +388,28 @@ export function ExpensesPageClient({
               {properties.map((property) => (
                 <option key={property.id} value={property.id}>
                   {property.formattedAddress}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label>
+            <span className="text-xs font-medium uppercase tracking-wide text-zinc-500">
+              Unit
+            </span>
+            <select
+              value={unitFilter}
+              onChange={(event) => setUnitFilter(event.target.value)}
+              disabled={propertyFilter === "all"}
+              className="mt-1.5 w-full rounded-md border border-zinc-200 bg-white px-3 py-2 text-sm focus:border-zinc-400 focus:outline-none focus:ring-2 focus:ring-zinc-200 disabled:cursor-not-allowed disabled:bg-zinc-50"
+            >
+              <option value="all">
+                {propertyFilter === "all" ? "Select property first" : "All units"}
+              </option>
+              {unitFilterOptions.map((label) => (
+                <option key={label} value={label}>
+                  {label === EXPENSE_WHOLE_PROPERTY_LABEL
+                    ? "Whole property"
+                    : `Unit ${label}`}
                 </option>
               ))}
             </select>
@@ -347,77 +435,17 @@ export function ExpensesPageClient({
           </label>
         </header>
 
-        <div className="overflow-x-auto">
-          <table className="min-w-full divide-y divide-zinc-200 text-sm">
-            <thead className="bg-zinc-50 text-left text-xs font-semibold uppercase tracking-wide text-zinc-500">
-              <tr>
-                <th className="px-4 py-3">
-                  <button type="button" onClick={() => setSort("date")}>
-                    Date{sortLabel("date")}
-                  </button>
-                </th>
-                <th className="px-4 py-3">
-                  <button type="button" onClick={() => setSort("property")}>
-                    Property{sortLabel("property")}
-                  </button>
-                </th>
-                <th className="px-4 py-3">
-                  <button type="button" onClick={() => setSort("category")}>
-                    Category{sortLabel("category")}
-                  </button>
-                </th>
-                <th className="px-4 py-3 text-right">
-                  <button type="button" onClick={() => setSort("amount")}>
-                    Amount{sortLabel("amount")}
-                  </button>
-                </th>
-                <th className="px-4 py-3">
-                  <button type="button" onClick={() => setSort("vendor")}>
-                    Vendor/payee{sortLabel("vendor")}
-                  </button>
-                </th>
-                <th className="px-4 py-3">Notes</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-zinc-100 bg-white">
-              {filteredExpenses.map((expense) => (
-                <tr key={expense.id} className="hover:bg-zinc-50/80">
-                  <td className="whitespace-nowrap px-4 py-3 text-zinc-600">
-                    {formatDate(expense.date)}
-                  </td>
-                  <td className="min-w-56 px-4 py-3 text-zinc-600">
-                    {expense.propertyAddress}
-                  </td>
-                  <td className="whitespace-nowrap px-4 py-3 text-zinc-600">
-                    {expense.category}
-                  </td>
-                  <td className="whitespace-nowrap px-4 py-3 text-right font-medium text-zinc-900">
-                    {formatCurrency(expense.amount)}
-                  </td>
-                  <td className="whitespace-nowrap px-4 py-3 text-zinc-600">
-                    {expense.vendor}
-                  </td>
-                  <td className="min-w-48 px-4 py-3 text-zinc-500">
-                    {expense.notes || "—"}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-            <tfoot className="border-t border-zinc-200 bg-zinc-50">
-              <tr>
-                <td
-                  colSpan={3}
-                  className="px-4 py-3 text-sm font-semibold text-zinc-900"
-                >
-                  Total
-                </td>
-                <td className="px-4 py-3 text-right text-sm font-semibold text-zinc-900">
-                  {formatCurrency(total)}
-                </td>
-                <td colSpan={2} />
-              </tr>
-            </tfoot>
-          </table>
+        <div className="border-b border-zinc-100 px-6 py-3">
+          <label className="block">
+            <span className="sr-only">Search expenses</span>
+            <input
+              type="search"
+              value={search}
+              onChange={(event) => setSearch(event.target.value)}
+              placeholder="Search vendor, notes, property, or unit…"
+              className="w-full rounded-md border border-zinc-200 bg-white px-3 py-2 text-sm focus:border-zinc-400 focus:outline-none focus:ring-2 focus:ring-zinc-200"
+            />
+          </label>
         </div>
 
         {filteredExpenses.length === 0 ? (
@@ -427,11 +455,13 @@ export function ExpensesPageClient({
             </p>
             <p className="mt-1 text-sm text-zinc-500">
               {expenses.length === 0
-                ? "Log your first expense to start tracking costs."
-                : "Try changing the property or category filter."}
+                ? "Log your first expense and attach a receipt or invoice."
+                : "Try changing filters or search."}
             </p>
           </div>
-        ) : null}
+        ) : (
+          <ExpensesGroupedList groups={groupedExpenses} collapseKey={search} />
+        )}
       </section>
 
       {isDrawerOpen ? (
@@ -449,7 +479,7 @@ export function ExpensesPageClient({
                   Log expense
                 </h2>
                 <p className="mt-1 text-sm text-zinc-500">
-                  Add cost details for a property.
+                  Assign to a unit or whole property. Totals roll up to the building.
                 </p>
               </div>
               <button
@@ -463,9 +493,7 @@ export function ExpensesPageClient({
 
             {properties.length === 0 ? (
               <section className="rounded-lg border border-dashed border-zinc-300 p-6 text-center">
-                <p className="text-sm font-medium text-zinc-900">
-                  No properties yet
-                </p>
+                <p className="text-sm font-medium text-zinc-900">No properties yet</p>
                 <p className="mt-1 text-sm text-zinc-500">
                   Add a property before logging expenses.
                 </p>
@@ -474,27 +502,23 @@ export function ExpensesPageClient({
               <form onSubmit={handleSubmit}>
                 <fieldset className="space-y-4" disabled={isPending}>
                   <label className="block">
-                    <span className="text-sm font-medium text-zinc-700">
-                      Date
-                    </span>
+                    <span className="text-sm font-medium text-zinc-700">Date</span>
                     <input
                       type="date"
                       value={draft.date}
                       onChange={(event) => updateDraft({ date: event.target.value })}
-                      className="mt-1.5 w-full rounded-md border border-zinc-200 bg-white px-3 py-2 text-sm focus:border-zinc-400 focus:outline-none focus:ring-2 focus:ring-zinc-200 disabled:opacity-60"
+                      className={inputClass}
                     />
                   </label>
 
                   <label className="block">
-                    <span className="text-sm font-medium text-zinc-700">
-                      Property
-                    </span>
+                    <span className="text-sm font-medium text-zinc-700">Property</span>
                     <select
                       value={draft.propertyId}
                       onChange={(event) =>
                         updateDraft({ propertyId: event.target.value })
                       }
-                      className="mt-1.5 w-full rounded-md border border-zinc-200 bg-white px-3 py-2 text-sm focus:border-zinc-400 focus:outline-none focus:ring-2 focus:ring-zinc-200 disabled:opacity-60"
+                      className={inputClass}
                     >
                       {properties.map((property) => (
                         <option key={property.id} value={property.id}>
@@ -506,8 +530,29 @@ export function ExpensesPageClient({
 
                   <label className="block">
                     <span className="text-sm font-medium text-zinc-700">
-                      Category
+                      Apartment / unit
                     </span>
+                    <select
+                      value={draft.unitLabel}
+                      onChange={(event) =>
+                        updateDraft({ unitLabel: event.target.value })
+                      }
+                      className={inputClass}
+                    >
+                      <option value="">Whole property (all units)</option>
+                      {(selectedDraftProperty?.units ?? []).map((unit) => (
+                        <option key={unit.id} value={unit.unitLabel}>
+                          Unit {unit.unitLabel}
+                        </option>
+                      ))}
+                    </select>
+                    <p className="mt-1 text-xs text-zinc-500">
+                      Optional. Unit expenses still count toward the property total.
+                    </p>
+                  </label>
+
+                  <label className="block">
+                    <span className="text-sm font-medium text-zinc-700">Category</span>
                     <select
                       value={draft.category}
                       onChange={(event) =>
@@ -515,7 +560,7 @@ export function ExpensesPageClient({
                           category: event.target.value as ExpenseCategory,
                         })
                       }
-                      className="mt-1.5 w-full rounded-md border border-zinc-200 bg-white px-3 py-2 text-sm focus:border-zinc-400 focus:outline-none focus:ring-2 focus:ring-zinc-200 disabled:opacity-60"
+                      className={inputClass}
                     >
                       {EXPENSE_CATEGORIES.map((category) => (
                         <option key={category} value={category}>
@@ -526,9 +571,7 @@ export function ExpensesPageClient({
                   </label>
 
                   <label className="block">
-                    <span className="text-sm font-medium text-zinc-700">
-                      Amount
-                    </span>
+                    <span className="text-sm font-medium text-zinc-700">Amount</span>
                     <input
                       type="number"
                       min={0.01}
@@ -538,7 +581,7 @@ export function ExpensesPageClient({
                         updateDraft({ amount: event.target.value })
                       }
                       placeholder="250.00"
-                      className="mt-1.5 w-full rounded-md border border-zinc-200 bg-white px-3 py-2 text-sm focus:border-zinc-400 focus:outline-none focus:ring-2 focus:ring-zinc-200 disabled:opacity-60"
+                      className={inputClass}
                     />
                   </label>
 
@@ -553,14 +596,12 @@ export function ExpensesPageClient({
                         updateDraft({ vendor: event.target.value })
                       }
                       placeholder="ABC Plumbing"
-                      className="mt-1.5 w-full rounded-md border border-zinc-200 bg-white px-3 py-2 text-sm focus:border-zinc-400 focus:outline-none focus:ring-2 focus:ring-zinc-200 disabled:opacity-60"
+                      className={inputClass}
                     />
                   </label>
 
                   <label className="block">
-                    <span className="text-sm font-medium text-zinc-700">
-                      Notes
-                    </span>
+                    <span className="text-sm font-medium text-zinc-700">Notes</span>
                     <textarea
                       value={draft.notes}
                       onChange={(event) =>
@@ -571,6 +612,13 @@ export function ExpensesPageClient({
                       className="mt-1.5 w-full resize-none rounded-md border border-zinc-200 bg-white px-3 py-2 text-sm focus:border-zinc-400 focus:outline-none focus:ring-2 focus:ring-zinc-200 disabled:opacity-60"
                     />
                   </label>
+
+                  <ExpenseReceiptField
+                    file={receiptFile}
+                    onFileChange={setReceiptFile}
+                    disabled={isPending}
+                    error={receiptError}
+                  />
                 </fieldset>
 
                 {formError ? (
