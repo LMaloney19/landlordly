@@ -17,6 +17,8 @@ import type { Tenant } from "@/types";
 
 type TenantsGroupedListProps = {
   groups: TenantPropertyGroup[];
+  /** When this changes (e.g. search), all property sections collapse. */
+  collapseKey?: string;
   onEdit: (tenant: Tenant) => void;
   onArchive: (tenant: Tenant) => void;
   onTenantUpdated: (tenant: Tenant) => void;
@@ -334,24 +336,17 @@ function tenantCountForProperty(property: TenantPropertyGroup) {
 
 export function TenantsGroupedList({
   groups,
+  collapseKey = "",
   onEdit,
   onArchive,
   onTenantUpdated,
   isPending,
 }: TenantsGroupedListProps) {
-  const [expandedIds, setExpandedIds] = useState<Set<string>>(() => new Set());
+  const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
 
   useEffect(() => {
-    setExpandedIds((current) => {
-      const next = new Set<string>();
-      for (const id of current) {
-        if (groups.some((group) => group.propertyId === id)) {
-          next.add(id);
-        }
-      }
-      return next;
-    });
-  }, [groups]);
+    setExpandedIds(new Set());
+  }, [collapseKey]);
 
   function toggleProperty(propertyId: string) {
     setExpandedIds((current) => {

@@ -413,6 +413,7 @@ export function TenantsPageClient({
         ) : (
           <TenantsGroupedList
             groups={groupedTenants}
+            collapseKey={search}
             onEdit={openEditDrawer}
             onArchive={handleArchive}
             onTenantUpdated={handleTenantUpdated}
