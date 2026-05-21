@@ -1,11 +1,16 @@
 import type { NextConfig } from "next";
 
 /**
- * Dev (`next dev`) and production builds (`next build`) use separate output
- * folders so a build never corrupts the running dev cache (Internal Server Error).
+ * Local production builds use `.next-build` so `next build` does not clobber a
+ * running dev server cache. Vercel always expects the default `.next` output.
  */
 const nextConfig: NextConfig = {
-  distDir: process.env.NODE_ENV === "production" ? ".next-build" : ".next",
+  distDir:
+    process.env.VERCEL === "1"
+      ? ".next"
+      : process.env.NODE_ENV === "production"
+        ? ".next-build"
+        : ".next",
 };
 
 export default nextConfig;
