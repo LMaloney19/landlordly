@@ -2,13 +2,14 @@ import { createServerClient, type SetAllCookies } from "@supabase/ssr";
 import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
 import { getSupabaseAnonKey, getSupabaseUrl } from "@/lib/supabase/config";
+import { DEFAULT_APP_PATH } from "@/lib/safe-redirect";
 import { routeHandlerAuthOptions } from "@/lib/supabase/server-options";
 
 export async function GET(request: Request) {
   const { searchParams, origin } = new URL(request.url);
   const code = searchParams.get("code");
-  let next = searchParams.get("next") ?? "/";
-  if (!next.startsWith("/")) next = "/";
+  let next = searchParams.get("next") ?? DEFAULT_APP_PATH;
+  if (!next.startsWith("/") || next.startsWith("//")) next = DEFAULT_APP_PATH;
 
   if (code) {
     const cookieStore = await cookies();

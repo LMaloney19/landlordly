@@ -1,5 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { isSupabaseConfigured } from "@/lib/supabase/config";
+import { DEFAULT_APP_PATH } from "@/lib/safe-redirect";
 import { createRequestSupabaseClient } from "@/lib/supabase/request-client";
 
 function readCredentials(request: NextRequest) {
@@ -16,7 +17,7 @@ function readCredentials(request: NextRequest) {
   return request.formData().then((formData) => ({
     email: String(formData.get("email") ?? ""),
     password: String(formData.get("password") ?? ""),
-    redirect: String(formData.get("redirect") ?? "/"),
+    redirect: String(formData.get("redirect") ?? DEFAULT_APP_PATH),
   }));
 }
 
@@ -37,8 +38,11 @@ export async function POST(request: NextRequest) {
 
   const email = String(body.email ?? "").trim();
   const password = String(body.password ?? "");
-  const redirectTo = String(body.redirect ?? "/");
-  const destination = redirectTo.startsWith("/") ? redirectTo : "/";
+  const redirectTo = String(body.redirect ?? DEFAULT_APP_PATH);
+  const destination =
+    redirectTo.startsWith("/") && !redirectTo.startsWith("//")
+      ? redirectTo
+      : DEFAULT_APP_PATH;
 
   if (!email || !password) {
     return NextResponse.json(

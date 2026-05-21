@@ -121,7 +121,7 @@ export async function createRentPayment(
   }
 
   revalidatePath("/rent");
-  revalidatePath("/");
+  revalidatePath("/dashboard");
 
   return { success: true, data: rowToRentPayment(data as RentPaymentRow) };
 }

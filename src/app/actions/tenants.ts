@@ -145,7 +145,7 @@ export async function createTenants(
   const rows = data as TenantRow[];
 
   revalidatePath("/tenants");
-  revalidatePath("/");
+  revalidatePath("/dashboard");
 
   return { success: true, data: rows.map(rowToTenant) };
 }

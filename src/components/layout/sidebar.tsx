@@ -18,7 +18,7 @@ import { SignOutButton } from "@/components/layout/sign-out-button";
 import { cn } from "@/lib/utils";
 
 const navItems = [
-  { href: "/", label: "Dashboard", icon: LayoutDashboard },
+  { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
   { href: "/properties", label: "Properties", icon: Building2 },
   { href: "/tenants", label: "Tenants", icon: Users },
   { href: "/rent", label: "Rent", icon: Receipt },
@@ -52,7 +52,7 @@ export function Sidebar({ userEmail }: SidebarProps) {
       <nav className="flex-1 space-y-0.5 p-3">
         {navItems.map(({ href, label, icon: Icon }) => {
           const isActive =
-            href === "/" ? pathname === "/" : pathname.startsWith(href);
+            pathname === href || pathname.startsWith(`${href}/`);
 
           return (
             <Link

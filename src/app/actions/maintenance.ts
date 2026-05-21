@@ -87,7 +87,7 @@ export async function createMaintenanceRequest(
   }
 
   revalidatePath("/maintenance");
-  revalidatePath("/");
+  revalidatePath("/dashboard");
 
   return { success: true, data: rowToMaintenance(data as MaintenanceRow) };
 }
@@ -126,7 +126,7 @@ export async function updateMaintenanceStatus(
   }
 
   revalidatePath("/maintenance");
-  revalidatePath("/");
+  revalidatePath("/dashboard");
 
   return { success: true, data: rowToMaintenance(data as MaintenanceRow) };
 }

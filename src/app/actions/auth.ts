@@ -23,8 +23,8 @@ export async function signIn(
     return { error: error.message };
   }
 
-  const redirectTo = String(formData.get("redirect") ?? "/");
-  redirect(redirectTo.startsWith("/") ? redirectTo : "/");
+  const redirectTo = String(formData.get("redirect") ?? "/dashboard");
+  redirect(redirectTo.startsWith("/") && !redirectTo.startsWith("//") ? redirectTo : "/dashboard");
 }
 
 export async function signUp(
@@ -50,7 +50,7 @@ export async function signUp(
   }
 
   if (data.session) {
-    redirect("/");
+    redirect("/dashboard");
   }
 
   return {

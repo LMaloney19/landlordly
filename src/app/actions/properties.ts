@@ -199,7 +199,7 @@ export async function deleteProperty(id: string): Promise<ActionResult<null>> {
   }
 
   revalidatePath("/properties");
-  revalidatePath("/");
+  revalidatePath("/dashboard");
   return { success: true, data: null };
 }
 
@@ -275,6 +275,6 @@ export async function updatePropertyWithUnits(
   }
 
   revalidatePath("/properties");
-  revalidatePath("/");
+  revalidatePath("/dashboard");
   return { success: true, data: rowToProperty(fullProperty as PropertyRow) };
 }
