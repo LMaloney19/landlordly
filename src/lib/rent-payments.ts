@@ -8,6 +8,8 @@ export type RentPaymentRow = {
   id: string;
   user_id: string;
   property_id: string;
+  tenant_id?: string | null;
+  unit_label?: string | null;
   amount: number;
   paid_at: string;
   notes: string | null;
@@ -20,6 +22,8 @@ export function rowToRentPayment(row: RentPaymentRow): RentPayment {
     id: row.id,
     propertyId: row.property_id,
     propertyAddress: formatAddressFromJoin(row.properties),
+    tenantId: row.tenant_id ?? null,
+    unitLabel: row.unit_label ?? null,
     amount: Number(row.amount),
     paidAt: row.paid_at,
     notes: row.notes,

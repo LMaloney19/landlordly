@@ -19,6 +19,8 @@ export type RentPaymentInput = {
   amount: number;
   paidAt: string;
   notes?: string;
+  tenantId?: string;
+  unitLabel?: string;
 };
 
 export async function getRentPayments(): Promise<ActionResult<RentPayment[]>> {
@@ -109,6 +111,8 @@ export async function createRentPayment(
     .insert({
       user_id: user.id,
       property_id: input.propertyId,
+      tenant_id: input.tenantId || null,
+      unit_label: input.unitLabel?.trim() || null,
       amount: input.amount,
       paid_at: input.paidAt,
       notes: input.notes?.trim() || null,

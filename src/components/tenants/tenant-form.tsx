@@ -17,6 +17,7 @@ type TenantDraft = {
   leaseStart: string;
   leaseEnd: string;
   monthlyRent: string;
+  rentDueDay: string;
   securityDeposit: string;
   petType: string;
 };
@@ -34,6 +35,7 @@ function newDraft(unitPreset?: string, rentPreset?: string): TenantDraft {
     leaseStart: todayIso(),
     leaseEnd: addDaysIso(365),
     monthlyRent: rentPreset ?? "",
+    rentDueDay: "1",
     securityDeposit: "",
     petType: "",
   };
@@ -193,6 +195,7 @@ export function TenantForm({ properties, onTenantsAdded }: TenantFormProps) {
             lease_start: input.leaseStart || null,
             lease_end: input.leaseEnd,
             monthly_rent: input.monthlyRent ?? null,
+            rent_due_day: input.rentDueDay ?? 1,
             security_deposit: input.securityDeposit ?? null,
             pet_name: null,
             pet_type: input.petType?.trim() || null,
@@ -379,32 +382,49 @@ export function TenantForm({ properties, onTenantsAdded }: TenantFormProps) {
               />
             </label>
 
-            <label className="block">
-              <span className="text-sm font-medium text-zinc-700">
-                Monthly rent override (optional)
-              </span>
-              <input
-                type="number"
-                min={1}
-                step={0.01}
-                value={row.monthlyRent}
-                onChange={(e) =>
-                  updateRow(row.key, { monthlyRent: e.target.value })
-                }
-                placeholder={
-                  selectedProperty
-                    ? String(
-                        selectedProperty.units.find(
-                          (u) => u.unitLabel === row.unitLabel,
-                        )?.monthlyRent ??
-                          selectedProperty.units[0]?.monthlyRent ??
-                          selectedProperty.totalMonthlyRent,
-                      )
-                    : "1200"
-                }
-                className="mt-1.5 w-full rounded-md border border-zinc-200 bg-white px-3 py-2 text-sm focus:border-zinc-400 focus:outline-none focus:ring-2 focus:ring-zinc-200 disabled:opacity-60"
-              />
-            </label>
+            <div className="grid grid-cols-2 gap-3">
+              <label className="block">
+                <span className="text-sm font-medium text-zinc-700">
+                  Monthly rent override
+                </span>
+                <input
+                  type="number"
+                  min={1}
+                  step={0.01}
+                  value={row.monthlyRent}
+                  onChange={(e) =>
+                    updateRow(row.key, { monthlyRent: e.target.value })
+                  }
+                  placeholder={
+                    selectedProperty
+                      ? String(
+                          selectedProperty.units.find(
+                            (u) => u.unitLabel === row.unitLabel,
+                          )?.monthlyRent ??
+                            selectedProperty.units[0]?.monthlyRent ??
+                            selectedProperty.totalMonthlyRent,
+                        )
+                      : "1200"
+                  }
+                  className="mt-1.5 w-full rounded-md border border-zinc-200 bg-white px-3 py-2 text-sm focus:border-zinc-400 focus:outline-none focus:ring-2 focus:ring-zinc-200 disabled:opacity-60"
+                />
+              </label>
+              <label className="block">
+                <span className="text-sm font-medium text-zinc-700">
+                  Rent due day
+                </span>
+                <input
+                  type="number"
+                  min={1}
+                  max={28}
+                  value={row.rentDueDay}
+                  onChange={(e) =>
+                    updateRow(row.key, { rentDueDay: e.target.value })
+                  }
+                  className="mt-1.5 w-full rounded-md border border-zinc-200 bg-white px-3 py-2 text-sm focus:border-zinc-400 focus:outline-none focus:ring-2 focus:ring-zinc-200 disabled:opacity-60"
+                />
+              </label>
+            </div>
 
             <label className="block">
               <span className="text-sm font-medium text-zinc-700">

@@ -16,11 +16,13 @@ import {
   type RentPaymentRow,
 } from "@/lib/rent-payments";
 import { rowToMaintenance, type MaintenanceRow } from "@/lib/maintenance";
+import { buildRentAlerts } from "@/lib/rent-status";
 import { addDaysIso, rowToTenant, todayIso, type TenantRow } from "@/lib/tenants";
 import type {
   DashboardStats,
   MaintenanceRequest,
   Property,
+  RentAlert,
   RentPayment,
   Tenant,
 } from "@/types";
@@ -34,6 +36,8 @@ export type DashboardData = {
   recentPayments: RentPayment[];
   expiringLeases: Tenant[];
   openMaintenance: MaintenanceRequest[];
+  overdueRent: RentAlert[];
+  rentDueSoon: RentAlert[];
 };
 
 function computePropertyStats(properties: Property[]): Pick<
@@ -83,6 +87,7 @@ export async function getDashboardData(): Promise<ActionResult<DashboardData>> {
     expiringCountResult,
     openMaintenanceResult,
     openMaintenanceCountResult,
+    activeTenantsResult,
   ] = await Promise.all([
     supabase
       .from("properties")
@@ -95,7 +100,7 @@ export async function getDashboardData(): Promise<ActionResult<DashboardData>> {
       .limit(5),
     supabase
       .from("rent_payments")
-      .select("amount")
+      .select("amount, property_id, tenant_id, unit_label, paid_at")
       .gte("paid_at", monthStart)
       .lte("paid_at", monthEnd),
     supabase
@@ -119,15 +124,20 @@ export async function getDashboardData(): Promise<ActionResult<DashboardData>> {
       .from("maintenance_requests")
       .select("*", { count: "exact", head: true })
       .in("status", ["open", "in_progress"]),
+    supabase
+      .from("tenants")
+      .select(`*, properties(${PROPERTY_ADDRESS_SELECT})`)
+      .is("archived_at", null)
+      .gte("lease_end", leaseWindowStart),
   ]);
 
   if (propertiesResult.error) {
     return { success: false, error: propertiesResult.error.message };
   }
 
-  const properties = (propertiesResult.data as PropertyRow[]).map(
-    rowToProperty,
-  );
+  const properties = (propertiesResult.data as PropertyRow[])
+    .filter((property) => !property.archived_at)
+    .map(rowToProperty);
   const propertyStats = computePropertyStats(properties);
 
   let rentCollectedThisMonth = 0;
@@ -194,6 +204,31 @@ export async function getDashboardData(): Promise<ActionResult<DashboardData>> {
     return { success: false, error: openMaintenanceCountResult.error.message };
   }
 
+  let overdueRent: RentAlert[] = [];
+  let rentDueSoon: RentAlert[] = [];
+  let overdueRentCount = 0;
+  let rentDueSoonCount = 0;
+
+  if (!activeTenantsResult.error && activeTenantsResult.data) {
+    const activeTenants = (activeTenantsResult.data as TenantRow[]).map(
+      rowToTenant,
+    );
+    const monthPayments = (monthPaymentsResult.data ?? []).map((row) => ({
+      propertyId: row.property_id as string,
+      tenantId: (row.tenant_id as string | null) ?? null,
+      unitLabel: (row.unit_label as string | null) ?? null,
+      paidAt: row.paid_at as string,
+      amount: Number(row.amount),
+    }));
+    const alerts = buildRentAlerts(activeTenants, properties, monthPayments);
+    overdueRent = alerts.overdue.slice(0, 5);
+    rentDueSoon = alerts.dueSoon.slice(0, 5);
+    overdueRentCount = alerts.overdueCount;
+    rentDueSoonCount = alerts.dueSoonCount;
+  } else if (activeTenantsResult.error && !tenantsTableMissing) {
+    return { success: false, error: activeTenantsResult.error.message };
+  }
+
   return {
     success: true,
     data: {
@@ -202,11 +237,15 @@ export async function getDashboardData(): Promise<ActionResult<DashboardData>> {
         rentCollectedThisMonth,
         openMaintenanceRequests,
         leasesExpiringSoon,
+        overdueRentCount,
+        rentDueSoonCount,
       },
       recentProperties: properties.slice(0, 5),
       recentPayments,
       expiringLeases,
       openMaintenance,
+      overdueRent,
+      rentDueSoon,
     },
   };
 }

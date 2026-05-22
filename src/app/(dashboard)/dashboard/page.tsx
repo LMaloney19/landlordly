@@ -10,11 +10,15 @@ function emptyDashboardData(): DashboardData {
       rentCollectedThisMonth: 0,
       openMaintenanceRequests: 0,
       leasesExpiringSoon: 0,
+      overdueRentCount: 0,
+      rentDueSoonCount: 0,
     },
     recentProperties: [],
     recentPayments: [],
     expiringLeases: [],
     openMaintenance: [],
+    overdueRent: [],
+    rentDueSoon: [],
   };
 }
 

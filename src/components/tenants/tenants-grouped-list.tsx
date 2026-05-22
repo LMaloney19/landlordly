@@ -23,11 +23,21 @@ import {
   type TenantRow,
   type TenantUnitGroup,
 } from "@/lib/tenants";
+import {
+  currentMonthDueDate,
+  daysFromToday,
+  normalizeRentDueDay,
+  rentStatusBadgeClass,
+  rentStatusLabel,
+  tenantRentStatus,
+} from "@/lib/rent-status";
 import { cn, formatCurrency } from "@/lib/utils";
-import type { Tenant } from "@/types";
+import type { Property, RentPayment, Tenant } from "@/types";
 
 type TenantsGroupedListProps = {
   groups: TenantPropertyGroup[];
+  properties: Property[];
+  payments: RentPayment[];
   collapseKey?: string;
   onEdit: (tenant: Tenant) => void;
   onArchive: (tenant: Tenant) => void;
@@ -249,12 +259,16 @@ function TenantPetControl({
 
 function TenantRowCard({
   tenant,
+  property,
+  payments,
   onEdit,
   onArchive,
   onTenantUpdated,
   isPending,
 }: {
   tenant: Tenant;
+  property: Property | undefined;
+  payments: RentPayment[];
   onEdit: (tenant: Tenant) => void;
   onArchive: (tenant: Tenant) => void;
   onTenantUpdated: (tenant: Tenant) => void;
@@ -262,6 +276,9 @@ function TenantRowCard({
 }) {
   const router = useRouter();
   const days = daysUntil(tenant.leaseEnd);
+  const rentStatus = tenantRentStatus(tenant, property, payments);
+  const dueDate = currentMonthDueDate(normalizeRentDueDay(tenant.rentDueDay));
+  const daysUntilDue = daysFromToday(dueDate);
 
   return (
     <article
@@ -282,7 +299,19 @@ function TenantRowCard({
             <User className="h-4 w-4" aria-hidden />
           </span>
           <div className="min-w-0">
-            <p className="font-semibold text-zinc-900">{tenant.name}</p>
+            <div className="flex flex-wrap items-center gap-2">
+              <p className="font-semibold text-zinc-900">{tenant.name}</p>
+              {rentStatus && rentStatus !== "paid" ? (
+                <span
+                  className={cn(
+                    "rounded-full px-2 py-0.5 text-[10px] font-semibold ring-1",
+                    rentStatusBadgeClass(rentStatus),
+                  )}
+                >
+                  {rentStatusLabel(rentStatus, daysUntilDue)}
+                </span>
+              ) : null}
+            </div>
             <div className="mt-1 flex flex-col gap-0.5 text-xs text-zinc-500">
               {tenant.email ? (
                 <span className="inline-flex items-center gap-1 truncate">
@@ -367,12 +396,16 @@ function TenantRowCard({
 
 function UnitSection({
   unit,
+  property,
+  payments,
   onEdit,
   onArchive,
   onTenantUpdated,
   isPending,
 }: {
   unit: TenantUnitGroup;
+  property: Property | undefined;
+  payments: RentPayment[];
   onEdit: (tenant: Tenant) => void;
   onArchive: (tenant: Tenant) => void;
   onTenantUpdated: (tenant: Tenant) => void;
@@ -433,6 +466,8 @@ function UnitSection({
             <li key={tenant.id}>
               <TenantRowCard
                 tenant={tenant}
+                property={property}
+                payments={payments}
                 onEdit={onEdit}
                 onArchive={onArchive}
                 onTenantUpdated={onTenantUpdated}
@@ -452,12 +487,15 @@ function tenantCountForProperty(property: TenantPropertyGroup) {
 
 export function TenantsGroupedList({
   groups,
+  properties,
+  payments,
   collapseKey = "",
   onEdit,
   onArchive,
   onTenantUpdated,
   isPending,
 }: TenantsGroupedListProps) {
+  const propertyById = new Map(properties.map((property) => [property.id, property]));
   const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
 
   useEffect(() => {
@@ -572,6 +610,8 @@ export function TenantsGroupedList({
                     <UnitSection
                       key={`${property.propertyId}-${unit.unitLabel}`}
                       unit={unit}
+                      property={propertyById.get(property.propertyId)}
+                      payments={payments}
                       onEdit={onEdit}
                       onArchive={onArchive}
                       onTenantUpdated={onTenantUpdated}

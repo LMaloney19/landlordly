@@ -11,13 +11,16 @@ import {
   type PropertyRow,
 } from "@/lib/properties";
 import { createClient } from "@/lib/supabase/client";
+import { buildRentAlerts } from "@/lib/rent-status";
+import { rowToRentPayment, type RentPaymentRow } from "@/lib/rent-payments";
 import {
   groupTenantsByPropertyAndUnit,
   rowToTenant,
   type TenantRow,
 } from "@/lib/tenants";
+import { RentAlertsPanel } from "@/components/rent/rent-alerts-panel";
 import { TenantsGroupedList } from "@/components/tenants/tenants-grouped-list";
-import type { Property, Tenant } from "@/types";
+import type { Property, RentPayment, Tenant } from "@/types";
 
 type TenantsPageProps = {
   properties: Property[];
@@ -34,6 +37,7 @@ type TenantEditDraft = {
   leaseStart: string;
   leaseEnd: string;
   monthlyRent: string;
+  rentDueDay: string;
   securityDeposit: string;
   petType: string;
 };
@@ -55,6 +59,7 @@ function draftFromTenant(tenant: Tenant): TenantEditDraft {
       tenant.securityDeposit !== null && tenant.securityDeposit !== undefined
         ? String(tenant.securityDeposit)
         : "",
+    rentDueDay: String(tenant.rentDueDay),
     petType: tenant.petType ?? "",
   };
 }
@@ -69,6 +74,7 @@ export function TenantsPageClient({
 }: TenantsPageProps) {
   const [properties, setProperties] = useState<Property[]>(initialProperties);
   const [tenants, setTenants] = useState<Tenant[]>(initialTenants);
+  const [payments, setPayments] = useState<RentPayment[]>([]);
   const [clientLoadError, setClientLoadError] = useState<string | null>(null);
   const [search, setSearch] = useState("");
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
@@ -97,7 +103,7 @@ export function TenantsPageClient({
         return;
       }
 
-      const [propertiesResult, tenantsResult] = await Promise.all([
+      const [propertiesResult, tenantsResult, paymentsResult] = await Promise.all([
         supabase
           .from("properties")
           .select(PROPERTY_WITH_UNITS_SELECT)
@@ -105,6 +111,11 @@ export function TenantsPageClient({
         supabase
           .from("tenants")
           .select(`*, properties(${PROPERTY_ADDRESS_SELECT})`)
+          .order("created_at", { ascending: false }),
+        supabase
+          .from("rent_payments")
+          .select(`*, properties(${PROPERTY_ADDRESS_SELECT})`)
+          .order("paid_at", { ascending: false })
           .order("created_at", { ascending: false }),
       ]);
 
@@ -119,6 +130,11 @@ export function TenantsPageClient({
         return;
       }
 
+      if (paymentsResult.error && !paymentsResult.error.message.includes("rent_payments")) {
+        setClientLoadError(paymentsResult.error.message);
+        return;
+      }
+
       setClientLoadError(null);
       setProperties(
         (propertiesResult.data as PropertyRow[])
@@ -129,6 +145,11 @@ export function TenantsPageClient({
         (tenantsResult.data as TenantRow[])
           .filter((tenant) => !tenant.archived_at)
           .map(rowToTenant),
+      );
+      setPayments(
+        paymentsResult.data
+          ? (paymentsResult.data as RentPaymentRow[]).map(rowToRentPayment)
+          : [],
       );
     }
 
@@ -155,6 +176,11 @@ export function TenantsPageClient({
   const groupedTenants = useMemo(
     () => groupTenantsByPropertyAndUnit(filteredTenants, properties),
     [filteredTenants, properties],
+  );
+
+  const rentAlerts = useMemo(
+    () => buildRentAlerts(tenants, properties, payments),
+    [tenants, properties, payments],
   );
 
   function handleTenantUpdated(updated: Tenant) {
@@ -320,6 +346,10 @@ export function TenantsPageClient({
           lease_start: editDraft.leaseStart || null,
           lease_end: editDraft.leaseEnd,
           monthly_rent: monthlyRent,
+          rent_due_day: Math.min(
+            28,
+            Math.max(1, Number(editDraft.rentDueDay) || 1),
+          ),
           security_deposit: securityDeposit,
           pet_name: null,
           pet_type: editDraft.petType.trim() || null,
@@ -376,6 +406,16 @@ export function TenantsPageClient({
         </p>
       ) : null}
 
+      {rentAlerts.overdueCount > 0 || rentAlerts.dueSoonCount > 0 ? (
+        <section className="mb-6">
+          <RentAlertsPanel
+            overdue={rentAlerts.overdue}
+            dueSoon={rentAlerts.dueSoon}
+            compact
+          />
+        </section>
+      ) : null}
+
       <section className="overflow-hidden rounded-lg border border-zinc-200 bg-white shadow-sm">
         <header className="flex flex-col gap-3 border-b border-zinc-200 px-6 py-4 md:flex-row md:items-center md:justify-between">
           <div>
@@ -411,6 +451,8 @@ export function TenantsPageClient({
         ) : (
           <TenantsGroupedList
             groups={groupedTenants}
+            properties={properties}
+            payments={payments}
             collapseKey={search}
             onEdit={openEditDrawer}
             onArchive={handleArchive}
@@ -586,6 +628,25 @@ export function TenantsPageClient({
                       }
                       className={inputClass}
                     />
+                  </label>
+
+                  <label className="block">
+                    <span className="text-sm font-medium text-zinc-700">
+                      Rent due day (1–28)
+                    </span>
+                    <input
+                      type="number"
+                      min={1}
+                      max={28}
+                      value={editDraft.rentDueDay}
+                      onChange={(event) =>
+                        updateEditDraft({ rentDueDay: event.target.value })
+                      }
+                      className={inputClass}
+                    />
+                    <p className="mt-1 text-xs text-zinc-500">
+                      Day of each month rent is due. Used for overdue alerts.
+                    </p>
                   </label>
 
                   <label className="block">

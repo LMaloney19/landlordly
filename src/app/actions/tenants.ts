@@ -18,6 +18,7 @@ export type TenantInput = {
   leaseStart?: string;
   leaseEnd: string;
   monthlyRent?: number;
+  rentDueDay?: number;
   securityDeposit?: number;
   petType?: string;
 };
@@ -129,6 +130,7 @@ export async function createTenants(
     lease_start: input.leaseStart || null,
     lease_end: input.leaseEnd,
     monthly_rent: input.monthlyRent ?? null,
+    rent_due_day: input.rentDueDay ?? 1,
     security_deposit: input.securityDeposit ?? null,
     pet_name: null,
     pet_type: input.petType?.trim() || null,

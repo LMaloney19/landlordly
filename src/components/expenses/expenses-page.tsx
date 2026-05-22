@@ -475,6 +475,15 @@ export function ExpensesPageClient({
         </p>
       ) : null}
 
+      {actionError ? (
+        <p
+          className="mb-6 rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700"
+          role="alert"
+        >
+          {actionError}
+        </p>
+      ) : null}
+
       <section className="overflow-hidden rounded-lg border border-zinc-200 bg-white shadow-sm">
         <header className="grid gap-3 border-b border-zinc-200 px-6 py-4 lg:grid-cols-[1fr_repeat(3,minmax(0,180px))] lg:items-end">
           <div>

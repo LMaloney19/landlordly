@@ -2,6 +2,7 @@
 
 import {
   AlertTriangle,
+  Bell,
   Building2,
   CalendarClock,
   DollarSign,
@@ -26,6 +27,7 @@ import {
   type RentPaymentRow,
 } from "@/lib/rent-payments";
 import { createClient } from "@/lib/supabase/client";
+import { buildRentAlerts } from "@/lib/rent-status";
 import { addDaysIso, daysUntil, rowToTenant, todayIso, type TenantRow } from "@/lib/tenants";
 import { formatCurrency } from "@/lib/utils";
 import type { DashboardStats, Property } from "@/types";
@@ -41,11 +43,15 @@ function emptyDashboardData(): DashboardData {
       rentCollectedThisMonth: 0,
       openMaintenanceRequests: 0,
       leasesExpiringSoon: 0,
+      overdueRentCount: 0,
+      rentDueSoonCount: 0,
     },
     recentProperties: [],
     recentPayments: [],
     expiringLeases: [],
     openMaintenance: [],
+    overdueRent: [],
+    rentDueSoon: [],
   };
 }
 
@@ -124,6 +130,7 @@ export function DashboardPageClient({
         expiringCountResult,
         openMaintenanceResult,
         openMaintenanceCountResult,
+        activeTenantsResult,
       ] = await Promise.all([
         supabase
           .from("properties")
@@ -136,7 +143,7 @@ export function DashboardPageClient({
           .limit(5),
         supabase
           .from("rent_payments")
-          .select("amount")
+          .select("amount, property_id, tenant_id, unit_label, paid_at")
           .gte("paid_at", monthStart)
           .lte("paid_at", monthEnd),
         supabase
@@ -160,6 +167,11 @@ export function DashboardPageClient({
           .from("maintenance_requests")
           .select("*", { count: "exact", head: true })
           .in("status", ["open", "in_progress"]),
+        supabase
+          .from("tenants")
+          .select(`*, properties(${PROPERTY_ADDRESS_SELECT})`)
+          .is("archived_at", null)
+          .gte("lease_end", leaseWindowStart),
       ]);
 
       if (cancelled) return;
@@ -221,6 +233,20 @@ export function DashboardPageClient({
           )
         : 0;
 
+      const activeTenants = activeTenantsResult.data
+        ? (activeTenantsResult.data as TenantRow[]).map(rowToTenant)
+        : [];
+      const monthPayments = monthPaymentsResult.data
+        ? monthPaymentsResult.data.map((row) => ({
+            propertyId: row.property_id as string,
+            tenantId: (row.tenant_id as string | null) ?? null,
+            unitLabel: (row.unit_label as string | null) ?? null,
+            paidAt: row.paid_at as string,
+            amount: Number(row.amount),
+          }))
+        : [];
+      const rentAlerts = buildRentAlerts(activeTenants, properties, monthPayments);
+
       setError(null);
       setData({
         stats: {
@@ -228,6 +254,8 @@ export function DashboardPageClient({
           rentCollectedThisMonth,
           openMaintenanceRequests: openMaintenanceCountResult.count ?? 0,
           leasesExpiringSoon: expiringCountResult.count ?? 0,
+          overdueRentCount: rentAlerts.overdueCount,
+          rentDueSoonCount: rentAlerts.dueSoonCount,
         },
         recentProperties: properties.slice(0, 5),
         recentPayments: paymentsResult.data
@@ -239,6 +267,8 @@ export function DashboardPageClient({
         openMaintenance: openMaintenanceResult.data
           ? (openMaintenanceResult.data as MaintenanceRow[]).map(rowToMaintenance)
           : [],
+        overdueRent: rentAlerts.overdue.slice(0, 5),
+        rentDueSoon: rentAlerts.dueSoon.slice(0, 5),
       });
     }
 
@@ -255,6 +285,8 @@ export function DashboardPageClient({
     recentPayments,
     expiringLeases,
     openMaintenance,
+    overdueRent,
+    rentDueSoon,
   } = data;
 
   const rentSubtitle =
@@ -278,7 +310,7 @@ export function DashboardPageClient({
         </p>
       ) : null}
 
-      <section className="grid gap-6 sm:grid-cols-2 xl:grid-cols-4">
+      <section className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
         <StatCard
           title="Total units"
           value={String(stats.totalUnits)}
@@ -308,6 +340,17 @@ export function DashboardPageClient({
           accent={stats.openMaintenanceRequests > 0 ? "warning" : "default"}
         />
         <StatCard
+          title="Rent overdue"
+          value={String(stats.overdueRentCount)}
+          subtitle={
+            stats.overdueRentCount === 0
+              ? "All caught up this month"
+              : "Needs payment"
+          }
+          icon={Bell}
+          accent={stats.overdueRentCount > 0 ? "warning" : "default"}
+        />
+        <StatCard
           title="Leases expiring"
           value={String(stats.leasesExpiringSoon)}
           subtitle={
@@ -319,6 +362,84 @@ export function DashboardPageClient({
           accent={stats.leasesExpiringSoon > 0 ? "warning" : "default"}
         />
       </section>
+
+      {(overdueRent.length > 0 || rentDueSoon.length > 0) ? (
+        <section className="mt-8">
+          <article className="rounded-lg border border-zinc-200 bg-white p-6 shadow-sm">
+            <header className="mb-4 flex items-center justify-between">
+              <h2 className="text-sm font-semibold text-zinc-900">Rent alerts</h2>
+              <Link
+                href="/rent"
+                className="text-sm font-medium text-zinc-600 transition-colors hover:text-zinc-900"
+              >
+                View rent
+              </Link>
+            </header>
+            <div className="grid gap-6 md:grid-cols-2">
+              <div>
+                <h3 className="text-xs font-semibold uppercase tracking-wide text-zinc-500">
+                  Overdue
+                </h3>
+                {overdueRent.length === 0 ? (
+                  <p className="mt-2 text-sm text-zinc-500">None overdue.</p>
+                ) : (
+                  <ul className="mt-2 divide-y divide-zinc-100">
+                    {overdueRent.map((alert) => (
+                      <li
+                        key={alert.tenantId}
+                        className="flex items-center justify-between gap-3 py-3 text-sm"
+                      >
+                        <span className="min-w-0 text-zinc-700">
+                          <span className="block truncate font-medium text-zinc-900">
+                            {alert.tenantName}
+                          </span>
+                          <span className="block truncate text-xs text-zinc-500">
+                            {formatCurrency(alert.balanceDue)} owed
+                          </span>
+                        </span>
+                        <span className="shrink-0 rounded-full bg-red-50 px-2.5 py-1 text-xs font-semibold text-red-700">
+                          Overdue
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+              <div>
+                <h3 className="text-xs font-semibold uppercase tracking-wide text-zinc-500">
+                  Due soon
+                </h3>
+                {rentDueSoon.length === 0 ? (
+                  <p className="mt-2 text-sm text-zinc-500">Nothing due soon.</p>
+                ) : (
+                  <ul className="mt-2 divide-y divide-zinc-100">
+                    {rentDueSoon.map((alert) => (
+                      <li
+                        key={alert.tenantId}
+                        className="flex items-center justify-between gap-3 py-3 text-sm"
+                      >
+                        <span className="min-w-0 text-zinc-700">
+                          <span className="block truncate font-medium text-zinc-900">
+                            {alert.tenantName}
+                          </span>
+                          <span className="block truncate text-xs text-zinc-500">
+                            Due {formatPaidDate(alert.dueDate)}
+                          </span>
+                        </span>
+                        <span className="shrink-0 rounded-full bg-amber-50 px-2.5 py-1 text-xs font-semibold text-amber-700">
+                          {alert.daysUntilDue === 0
+                            ? "Today"
+                            : `${alert.daysUntilDue}d`}
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+            </div>
+          </article>
+        </section>
+      ) : null}
 
       <section className="mt-8 grid gap-6 md:grid-cols-2 xl:grid-cols-4">
         <article className="rounded-lg border border-zinc-200 bg-white p-6 shadow-sm">

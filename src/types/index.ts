@@ -75,6 +75,7 @@ export type Tenant = {
   leaseStart: string | null;
   leaseEnd: string;
   monthlyRent: number | null;
+  rentDueDay: number;
   securityDeposit: number | null;
   petType: string | null;
 };
@@ -83,9 +84,27 @@ export type RentPayment = {
   id: string;
   propertyId: string;
   propertyAddress: string;
+  tenantId: string | null;
+  unitLabel: string | null;
   amount: number;
   paidAt: string;
   notes: string | null;
+};
+
+export type RentAlertStatus = "overdue" | "due_soon";
+
+export type RentAlert = {
+  tenantId: string;
+  tenantName: string;
+  propertyId: string;
+  propertyAddress: string;
+  unitLabel: string | null;
+  expectedRent: number;
+  collected: number;
+  balanceDue: number;
+  dueDate: string;
+  daysUntilDue: number;
+  status: RentAlertStatus;
 };
 
 export type ExpenseCategory =
@@ -122,4 +141,6 @@ export type DashboardStats = {
   propertyCount: number;
   openMaintenanceRequests: number;
   leasesExpiringSoon: number;
+  overdueRentCount: number;
+  rentDueSoonCount: number;
 };

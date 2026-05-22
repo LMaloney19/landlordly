@@ -2,6 +2,7 @@ import {
   formatAddressFromJoin,
   type PropertyAddressFields,
 } from "@/lib/properties";
+import { normalizeRentDueDay } from "@/lib/rent-status";
 import type { Tenant } from "@/types";
 
 export type TenantRow = {
@@ -15,6 +16,7 @@ export type TenantRow = {
   lease_start: string | null;
   lease_end: string;
   monthly_rent: number | null;
+  rent_due_day?: number | null;
   security_deposit?: number | null;
   pet_name?: string | null;
   pet_type?: string | null;
@@ -35,6 +37,7 @@ export function rowToTenant(row: TenantRow): Tenant {
     leaseStart: row.lease_start,
     leaseEnd: row.lease_end,
     monthlyRent: row.monthly_rent != null ? Number(row.monthly_rent) : null,
+    rentDueDay: normalizeRentDueDay(row.rent_due_day),
     securityDeposit:
       row.security_deposit != null ? Number(row.security_deposit) : null,
     petType: row.pet_type?.trim() || row.pet_name?.trim() || null,

@@ -1,11 +1,13 @@
 "use client";
 
-import { useState, useTransition, type FormEvent } from "react";
+import { useMemo, useState, useTransition, type FormEvent } from "react";
 import { createRentPayment, type RentPaymentInput } from "@/app/actions/rent";
-import type { Property, RentPayment } from "@/types";
+import { resolveExpectedRent } from "@/lib/rent-status";
+import type { Property, RentPayment, Tenant } from "@/types";
 
 type RentPaymentFormProps = {
   properties: Property[];
+  tenants: Tenant[];
   onCreated: (payment: RentPayment) => void;
 };
 
@@ -15,14 +17,55 @@ function todayIso() {
 
 export function RentPaymentForm({
   properties,
+  tenants,
   onCreated,
 }: RentPaymentFormProps) {
   const [propertyId, setPropertyId] = useState(properties[0]?.id ?? "");
+  const [tenantId, setTenantId] = useState("");
   const [amount, setAmount] = useState("");
   const [paidAt, setPaidAt] = useState(todayIso());
   const [notes, setNotes] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
+
+  const selectedProperty = useMemo(
+    () => properties.find((property) => property.id === propertyId),
+    [properties, propertyId],
+  );
+
+  const propertyTenants = useMemo(
+    () =>
+      tenants
+        .filter((tenant) => tenant.propertyId === propertyId)
+        .sort((a, b) => a.name.localeCompare(b.name)),
+    [tenants, propertyId],
+  );
+
+  const selectedTenant = useMemo(
+    () => propertyTenants.find((tenant) => tenant.id === tenantId),
+    [propertyTenants, tenantId],
+  );
+
+  function handlePropertyChange(nextPropertyId: string) {
+    setPropertyId(nextPropertyId);
+    setTenantId("");
+    setAmount("");
+  }
+
+  function handleTenantChange(nextTenantId: string) {
+    setTenantId(nextTenantId);
+    if (!nextTenantId) {
+      return;
+    }
+
+    const tenant = propertyTenants.find((item) => item.id === nextTenantId);
+    if (!tenant) return;
+
+    const expected = resolveExpectedRent(tenant, selectedProperty);
+    if (expected > 0) {
+      setAmount(String(expected));
+    }
+  }
 
   function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -48,6 +91,8 @@ export function RentPaymentForm({
       amount: parsedAmount,
       paidAt,
       notes: notes.trim() || undefined,
+      tenantId: tenantId || undefined,
+      unitLabel: selectedTenant?.unitLabel?.trim() || undefined,
     };
 
     startTransition(async () => {
@@ -62,6 +107,7 @@ export function RentPaymentForm({
       setAmount("");
       setNotes("");
       setPaidAt(todayIso());
+      setTenantId("");
     });
   }
 
@@ -83,7 +129,7 @@ export function RentPaymentForm({
     >
       <h2 className="text-sm font-semibold text-zinc-900">Record payment</h2>
       <p className="mt-1 text-sm text-zinc-500">
-        Log rent received for a property.
+        Link to a tenant to track overdue rent accurately.
       </p>
 
       <fieldset className="mt-6 space-y-4" disabled={isPending}>
@@ -91,12 +137,31 @@ export function RentPaymentForm({
           <span className="text-sm font-medium text-zinc-700">Property</span>
           <select
             value={propertyId}
-            onChange={(e) => setPropertyId(e.target.value)}
+            onChange={(e) => handlePropertyChange(e.target.value)}
             className="mt-1.5 w-full rounded-md border border-zinc-200 bg-white px-3 py-2 text-sm text-zinc-900 focus:border-zinc-400 focus:outline-none focus:ring-2 focus:ring-zinc-200 disabled:opacity-60"
           >
             {properties.map((property) => (
               <option key={property.id} value={property.id}>
                 {property.formattedAddress}
+              </option>
+            ))}
+          </select>
+        </label>
+
+        <label className="block">
+          <span className="text-sm font-medium text-zinc-700">
+            Tenant (recommended)
+          </span>
+          <select
+            value={tenantId}
+            onChange={(e) => handleTenantChange(e.target.value)}
+            className="mt-1.5 w-full rounded-md border border-zinc-200 bg-white px-3 py-2 text-sm text-zinc-900 focus:border-zinc-400 focus:outline-none focus:ring-2 focus:ring-zinc-200 disabled:opacity-60"
+          >
+            <option value="">Property-wide / unassigned</option>
+            {propertyTenants.map((tenant) => (
+              <option key={tenant.id} value={tenant.id}>
+                {tenant.name}
+                {tenant.unitLabel ? ` · Unit ${tenant.unitLabel}` : ""}
               </option>
             ))}
           </select>
