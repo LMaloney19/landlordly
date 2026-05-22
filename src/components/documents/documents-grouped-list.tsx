@@ -5,6 +5,8 @@ import {
   ChevronDown,
   DoorOpen,
   FileText,
+  Pencil,
+  Trash2,
   User,
 } from "lucide-react";
 import { useEffect, useState, useTransition } from "react";
@@ -27,7 +29,9 @@ import type { Document } from "@/types";
 type DocumentsGroupedListProps = {
   groups: DocumentPropertyGroup[];
   collapseKey?: string;
+  onEdit: (document: Document) => void;
   onDeleted: (id: string) => void;
+  isPending?: boolean;
 };
 
 function formatDate(iso: string) {
@@ -53,10 +57,12 @@ function categoryBadgeClass(category: Document["category"]) {
 
 function DocumentRow({
   doc,
+  onEdit,
   onDeleted,
   disabled,
 }: {
   doc: Document;
+  onEdit: (document: Document) => void;
   onDeleted: (id: string) => void;
   disabled: boolean;
 }) {
@@ -111,7 +117,19 @@ function DocumentRow({
           </p>
         </div>
       </div>
-      <div className="flex shrink-0 gap-2">
+      <div className="flex shrink-0 items-center gap-1">
+        <button
+          type="button"
+          disabled={disabled || isPending}
+          onClick={(event) => {
+            event.stopPropagation();
+            onEdit(doc);
+          }}
+          className="rounded-md p-1.5 text-zinc-500 hover:bg-zinc-100 hover:text-zinc-800 disabled:opacity-50"
+          aria-label={`Edit ${doc.name}`}
+        >
+          <Pencil className="h-4 w-4" />
+        </button>
         <button
           type="button"
           disabled={disabled || isPending}
@@ -124,16 +142,27 @@ function DocumentRow({
           type="button"
           disabled={disabled || isPending}
           onClick={handleDelete}
-          className="rounded-md border border-zinc-200 px-3 py-1.5 text-sm font-medium text-red-600 transition-colors hover:bg-red-50 disabled:opacity-60"
+          className="rounded-md p-1.5 text-zinc-500 hover:bg-red-50 hover:text-red-600 disabled:opacity-50"
+          aria-label={`Archive ${doc.name}`}
         >
-          Archive
+          <Trash2 className="h-4 w-4" />
         </button>
       </div>
     </article>
   );
 }
 
-function TenantSection({ group, onDeleted }: { group: DocumentTenantGroup; onDeleted: (id: string) => void }) {
+function TenantSection({
+  group,
+  onEdit,
+  onDeleted,
+  isPending,
+}: {
+  group: DocumentTenantGroup;
+  onEdit: (document: Document) => void;
+  onDeleted: (id: string) => void;
+  isPending: boolean;
+}) {
   return (
     <div className="rounded-lg border border-zinc-200/80 bg-white">
       <div className="flex items-center gap-3 border-b border-zinc-100 px-4 py-3">
@@ -153,7 +182,12 @@ function TenantSection({ group, onDeleted }: { group: DocumentTenantGroup; onDel
       <ul className="space-y-3 p-3">
         {group.documents.map((doc) => (
           <li key={doc.id}>
-            <DocumentRow doc={doc} onDeleted={onDeleted} disabled={false} />
+            <DocumentRow
+              doc={doc}
+              onEdit={onEdit}
+              onDeleted={onDeleted}
+              disabled={isPending}
+            />
           </li>
         ))}
       </ul>
@@ -163,10 +197,14 @@ function TenantSection({ group, onDeleted }: { group: DocumentTenantGroup; onDel
 
 function UnitSection({
   unit,
+  onEdit,
   onDeleted,
+  isPending,
 }: {
   unit: DocumentUnitGroup;
+  onEdit: (document: Document) => void;
   onDeleted: (id: string) => void;
+  isPending: boolean;
 }) {
   const isWholeProperty = unit.unitLabel === DOCUMENT_WHOLE_PROPERTY_LABEL;
 
@@ -202,7 +240,9 @@ function UnitSection({
           <TenantSection
             key={tenant.tenantKey}
             group={tenant}
+            onEdit={onEdit}
             onDeleted={onDeleted}
+            isPending={isPending}
           />
         ))}
       </div>
@@ -213,7 +253,9 @@ function UnitSection({
 export function DocumentsGroupedList({
   groups,
   collapseKey = "",
+  onEdit,
   onDeleted,
+  isPending = false,
 }: DocumentsGroupedListProps) {
   const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
 
@@ -339,7 +381,9 @@ export function DocumentsGroupedList({
                       <UnitSection
                         key={`${property.propertyId}-${unit.unitLabel}`}
                         unit={unit}
+                        onEdit={onEdit}
                         onDeleted={onDeleted}
+                        isPending={isPending}
                       />
                     ))}
                   </div>

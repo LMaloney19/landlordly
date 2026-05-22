@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { PageHeader } from "@/components/ui/page-header";
+import { DocumentEditDrawer } from "@/components/documents/document-edit-drawer";
 import { DocumentUploadForm } from "@/components/documents/document-upload-form";
 import { DocumentsGroupedList } from "@/components/documents/documents-grouped-list";
 import { groupDocumentsByPropertyUnitTenant } from "@/lib/documents";
@@ -21,11 +22,34 @@ export function DocumentsPageClient({
   loadError,
 }: DocumentsPageProps) {
   const [documents, setDocuments] = useState<Document[]>(initialDocuments);
+  const [editingDocument, setEditingDocument] = useState<Document | null>(null);
 
   const groups = useMemo(
     () => groupDocumentsByPropertyUnitTenant(documents, properties, tenants),
     [documents, properties, tenants],
   );
+
+  function openEditDrawer(document: Document) {
+    setEditingDocument(document);
+  }
+
+  function closeEditDrawer() {
+    setEditingDocument(null);
+  }
+
+  function handleUpdated(document: Document) {
+    setDocuments((current) =>
+      current.map((item) => (item.id === document.id ? document : item)),
+    );
+    closeEditDrawer();
+  }
+
+  function handleDeleted(id: string) {
+    setDocuments((current) => current.filter((d) => d.id !== id));
+    if (editingDocument?.id === id) {
+      closeEditDrawer();
+    }
+  }
 
   return (
     <>
@@ -52,11 +76,21 @@ export function DocumentsPageClient({
         <DocumentsGroupedList
           groups={groups}
           collapseKey={String(documents.length)}
-          onDeleted={(id) =>
-            setDocuments((current) => current.filter((d) => d.id !== id))
-          }
+          onEdit={openEditDrawer}
+          onDeleted={handleDeleted}
         />
       </section>
+
+      {editingDocument ? (
+        <DocumentEditDrawer
+          key={editingDocument.id}
+          document={editingDocument}
+          properties={properties}
+          tenants={tenants}
+          onClose={closeEditDrawer}
+          onUpdated={handleUpdated}
+        />
+      ) : null}
     </>
   );
 }
