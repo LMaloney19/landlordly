@@ -129,13 +129,150 @@ export function collectedForTenantThisMonth(
     .reduce((sum, payment) => sum + payment.amount, 0);
 }
 
+type RentPaymentPick = Pick<
+  RentPayment,
+  "propertyId" | "tenantId" | "unitLabel" | "paidAt" | "amount"
+>;
+
+function rentPaymentDedupeKey(payment: RentPaymentPick) {
+  return `${payment.propertyId}|${payment.tenantId ?? ""}|${payment.unitLabel ?? ""}|${payment.paidAt}|${payment.amount}`;
+}
+
+/** Sum rent collected for a unit without counting the same payment twice. */
+export function collectedForUnitThisMonth(
+  unitTenants: Tenant[],
+  payments: RentPaymentPick[],
+  monthStart = startOfMonthIso(),
+  monthEnd = endOfMonthIso(),
+) {
+  const seen = new Set<string>();
+  let sum = 0;
+
+  for (const payment of payments) {
+    const applies = unitTenants.some((tenant) =>
+      paymentAppliesToTenant(payment, tenant, monthStart, monthEnd),
+    );
+    if (!applies) continue;
+
+    const key = rentPaymentDedupeKey(payment);
+    if (seen.has(key)) continue;
+    seen.add(key);
+    sum += payment.amount;
+  }
+
+  return sum;
+}
+
+export function unitRentAlertId(propertyId: string, unitKey: string) {
+  return `${propertyId}::${unitKey}`;
+}
+
+/**
+ * Rent alerts rolled up per apartment/unit (one row per unit, not per tenant).
+ * Use on the dashboard so split leases do not double-count.
+ */
+export function buildRentAlertsByUnit(
+  tenants: Tenant[],
+  properties: Property[],
+  payments: RentPaymentPick[],
+  today = todayIso(),
+): RentAlertsSummary {
+  const propertyById = new Map(properties.map((property) => [property.id, property]));
+  const referenceDate = new Date(today + "T00:00:00");
+  const monthStart = startOfMonthIso(referenceDate);
+  const monthEnd = endOfMonthIso(referenceDate);
+
+  const tenantsByUnit = new Map<string, Tenant[]>();
+
+  for (const tenant of tenants) {
+    if (!isActiveTenant(tenant, today)) continue;
+
+    const property = propertyById.get(tenant.propertyId);
+    const expectedRent = resolveExpectedRent(tenant, property);
+    if (expectedRent <= 0) continue;
+
+    const unitKey = rentAlertUnitKey(tenant.unitLabel);
+    const alertId = unitRentAlertId(tenant.propertyId, unitKey);
+    const list = tenantsByUnit.get(alertId) ?? [];
+    list.push(tenant);
+    tenantsByUnit.set(alertId, list);
+  }
+
+  const overdue: RentAlert[] = [];
+  const dueSoon: RentAlert[] = [];
+
+  for (const [alertId, unitTenants] of tenantsByUnit) {
+    const first = unitTenants[0];
+    const property = propertyById.get(first.propertyId);
+    const unitKey = rentAlertUnitKey(first.unitLabel);
+
+    const expectedRent = unitTenants.reduce(
+      (sum, tenant) => sum + resolveExpectedRent(tenant, property),
+      0,
+    );
+    const collected = collectedForUnitThisMonth(
+      unitTenants,
+      payments,
+      monthStart,
+      monthEnd,
+    );
+    const balanceDue = Math.max(0, expectedRent - collected);
+
+    if (balanceDue < 0.01) continue;
+
+    let daysUntilDue = Infinity;
+    let dueDate = currentMonthDueDate(
+      normalizeRentDueDay(unitTenants[0].rentDueDay),
+      referenceDate,
+    );
+
+    for (const tenant of unitTenants) {
+      const tenantDueDate = currentMonthDueDate(
+        normalizeRentDueDay(tenant.rentDueDay),
+        referenceDate,
+      );
+      const tenantDays = daysFromToday(tenantDueDate);
+      if (tenantDays < daysUntilDue) {
+        daysUntilDue = tenantDays;
+        dueDate = tenantDueDate;
+      }
+    }
+
+    const base = {
+      tenantId: alertId,
+      tenantName: formatRentAlertUnitTitle(unitKey),
+      propertyId: first.propertyId,
+      propertyAddress: first.propertyAddress,
+      unitLabel: first.unitLabel,
+      expectedRent,
+      collected,
+      balanceDue,
+      dueDate,
+      daysUntilDue,
+    };
+
+    if (daysUntilDue < 0) {
+      overdue.push({ ...base, status: "overdue" as const });
+    } else if (daysUntilDue <= RENT_DUE_SOON_DAYS) {
+      dueSoon.push({ ...base, status: "due_soon" as const });
+    }
+  }
+
+  overdue.sort((a, b) => a.daysUntilDue - b.daysUntilDue);
+  dueSoon.sort((a, b) => a.daysUntilDue - b.daysUntilDue);
+
+  return {
+    overdue,
+    dueSoon,
+    overdueCount: overdue.length,
+    dueSoonCount: dueSoon.length,
+  };
+}
+
 export function buildRentAlerts(
   tenants: Tenant[],
   properties: Property[],
-  payments: Pick<
-    RentPayment,
-    "propertyId" | "tenantId" | "unitLabel" | "paidAt" | "amount"
-  >[],
+  payments: RentPaymentPick[],
   today = todayIso(),
 ): RentAlertsSummary {
   const propertyById = new Map(properties.map((property) => [property.id, property]));

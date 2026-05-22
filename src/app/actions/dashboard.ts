@@ -16,7 +16,7 @@ import {
   type RentPaymentRow,
 } from "@/lib/rent-payments";
 import { rowToMaintenance, type MaintenanceRow } from "@/lib/maintenance";
-import { buildRentAlerts } from "@/lib/rent-status";
+import { buildRentAlertsByUnit } from "@/lib/rent-status";
 import { addDaysIso, rowToTenant, todayIso, type TenantRow } from "@/lib/tenants";
 import type {
   DashboardStats,
@@ -220,7 +220,7 @@ export async function getDashboardData(): Promise<ActionResult<DashboardData>> {
       paidAt: row.paid_at as string,
       amount: Number(row.amount),
     }));
-    const alerts = buildRentAlerts(activeTenants, properties, monthPayments);
+    const alerts = buildRentAlertsByUnit(activeTenants, properties, monthPayments);
     overdueRent = alerts.overdue.slice(0, 5);
     rentDueSoon = alerts.dueSoon.slice(0, 5);
     overdueRentCount = alerts.overdueCount;

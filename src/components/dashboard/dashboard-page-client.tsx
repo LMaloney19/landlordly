@@ -27,7 +27,7 @@ import {
   type RentPaymentRow,
 } from "@/lib/rent-payments";
 import { createClient } from "@/lib/supabase/client";
-import { buildRentAlerts } from "@/lib/rent-status";
+import { buildRentAlertsByUnit } from "@/lib/rent-status";
 import { addDaysIso, daysUntil, rowToTenant, todayIso, type TenantRow } from "@/lib/tenants";
 import { formatCurrency } from "@/lib/utils";
 import type { DashboardStats, Property } from "@/types";
@@ -245,7 +245,11 @@ export function DashboardPageClient({
             amount: Number(row.amount),
           }))
         : [];
-      const rentAlerts = buildRentAlerts(activeTenants, properties, monthPayments);
+      const rentAlerts = buildRentAlertsByUnit(
+        activeTenants,
+        properties,
+        monthPayments,
+      );
 
       setError(null);
       setData({
@@ -345,7 +349,7 @@ export function DashboardPageClient({
           subtitle={
             stats.overdueRentCount === 0
               ? "All caught up this month"
-              : "Needs payment"
+              : "Units needing payment"
           }
           icon={Bell}
           accent={stats.overdueRentCount > 0 ? "warning" : "default"}
@@ -394,6 +398,9 @@ export function DashboardPageClient({
                             {alert.tenantName}
                           </span>
                           <span className="block truncate text-xs text-zinc-500">
+                            {alert.propertyAddress}
+                          </span>
+                          <span className="block truncate text-xs text-zinc-500">
                             {formatCurrency(alert.balanceDue)} owed
                           </span>
                         </span>
@@ -423,7 +430,11 @@ export function DashboardPageClient({
                             {alert.tenantName}
                           </span>
                           <span className="block truncate text-xs text-zinc-500">
-                            Due {formatPaidDate(alert.dueDate)}
+                            {alert.propertyAddress}
+                          </span>
+                          <span className="block truncate text-xs text-zinc-500">
+                            Due {formatPaidDate(alert.dueDate)} ·{" "}
+                            {formatCurrency(alert.balanceDue)} owed
                           </span>
                         </span>
                         <span className="shrink-0 rounded-full bg-amber-50 px-2.5 py-1 text-xs font-semibold text-amber-700">
