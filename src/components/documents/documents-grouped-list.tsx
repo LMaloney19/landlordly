@@ -32,6 +32,8 @@ type DocumentsGroupedListProps = {
   onEdit: (document: Document) => void;
   onDeleted: (id: string) => void;
   isPending?: boolean;
+  /** When true, omit outer card chrome (parent provides header/filters). */
+  embedded?: boolean;
 };
 
 function formatDate(iso: string) {
@@ -284,6 +286,7 @@ export function DocumentsGroupedList({
   onEdit,
   onDeleted,
   isPending = false,
+  embedded = false,
 }: DocumentsGroupedListProps) {
   const [expandedPropertyIds, setExpandedPropertyIds] = useState<Set<string>>(
     new Set(),
@@ -341,6 +344,7 @@ export function DocumentsGroupedList({
   );
 
   if (groups.length === 0) {
+    if (embedded) return null;
     return (
       <section className="rounded-lg border border-dashed border-zinc-300 bg-white p-12 text-center shadow-sm">
         <p className="text-sm font-medium text-zinc-900">No documents yet</p>
@@ -360,6 +364,107 @@ export function DocumentsGroupedList({
   const anyExpanded =
     expandedPropertyIds.size > 0 || expandedUnitKeys.size > 0;
 
+  const listBody = (
+    <div className="p-4 sm:p-6">
+      <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
+        <p className="text-xs text-zinc-500">
+          Expand a property, then a unit, to see tenants and files.
+        </p>
+        <div className="flex gap-2">
+          <button
+            type="button"
+            onClick={expandAll}
+            disabled={allExpanded}
+            className="rounded-md border border-zinc-200 px-2.5 py-1 text-xs font-medium text-zinc-600 hover:bg-zinc-50 disabled:opacity-40"
+          >
+            Expand all
+          </button>
+          <button
+            type="button"
+            onClick={collapseAll}
+            disabled={!anyExpanded}
+            className="rounded-md border border-zinc-200 px-2.5 py-1 text-xs font-medium text-zinc-600 hover:bg-zinc-50 disabled:opacity-40"
+          >
+            Collapse all
+          </button>
+        </div>
+      </div>
+
+      <ul className="space-y-3">
+        {groups.map((property) => {
+          const isPropertyExpanded = expandedPropertyIds.has(property.propertyId);
+
+          return (
+            <li
+              key={property.propertyId}
+              className="overflow-hidden rounded-xl border border-zinc-200 bg-white shadow-sm"
+            >
+              <button
+                type="button"
+                onClick={() => toggleProperty(property.propertyId)}
+                className="flex w-full items-start gap-4 px-4 py-4 text-left transition-colors hover:bg-zinc-50/80 sm:px-5"
+              >
+                <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg bg-zinc-900 text-white">
+                  <Building2 className="h-5 w-5" aria-hidden />
+                </span>
+                <div className="min-w-0 flex-1">
+                  <p className="text-[10px] font-medium uppercase tracking-wider text-zinc-500">
+                    Property
+                  </p>
+                  <p className="mt-0.5 text-base font-semibold text-zinc-900">
+                    {property.propertyAddress}
+                  </p>
+                  <div className="mt-2 flex flex-wrap gap-2">
+                    <span className="rounded-full bg-zinc-100 px-2.5 py-0.5 text-xs font-medium text-zinc-700">
+                      {property.units.length} unit
+                      {property.units.length === 1 ? "" : "s"}
+                    </span>
+                    <span className="rounded-full bg-zinc-100 px-2.5 py-0.5 text-xs font-medium text-zinc-700">
+                      {property.documentCount} file
+                      {property.documentCount === 1 ? "" : "s"}
+                    </span>
+                  </div>
+                </div>
+                <ChevronDown
+                  className={cn(
+                    "mt-2 h-5 w-5 shrink-0 text-zinc-400 transition-transform",
+                    isPropertyExpanded && "rotate-180",
+                  )}
+                  aria-hidden
+                />
+              </button>
+
+              {isPropertyExpanded ? (
+                <div className="space-y-3 border-t border-zinc-100 bg-zinc-50/40 px-4 py-4 sm:px-5">
+                  {property.units.map((unit) => {
+                    const unitKey = unitExpandKey(property.propertyId, unit.unitLabel);
+                    return (
+                      <UnitSection
+                        key={unitKey}
+                        unit={unit}
+                        isExpanded={expandedUnitKeys.has(unitKey)}
+                        onToggle={() =>
+                          toggleUnit(property.propertyId, unit.unitLabel)
+                        }
+                        onEdit={onEdit}
+                        onDeleted={onDeleted}
+                        isPending={isPending}
+                      />
+                    );
+                  })}
+                </div>
+              ) : null}
+            </li>
+          );
+        })}
+      </ul>
+    </div>
+  );
+
+  if (embedded) {
+    return listBody;
+  }
+
   return (
     <section className="overflow-hidden rounded-lg border border-zinc-200 bg-white shadow-sm">
       <header className="border-b border-zinc-200 px-6 py-4">
@@ -368,101 +473,7 @@ export function DocumentsGroupedList({
           Grouped by property, unit, and tenant
         </p>
       </header>
-
-      <div className="p-4 sm:p-6">
-        <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
-          <p className="text-xs text-zinc-500">
-            Expand a property, then a unit, to see tenants and files.
-          </p>
-          <div className="flex gap-2">
-            <button
-              type="button"
-              onClick={expandAll}
-              disabled={allExpanded}
-              className="rounded-md border border-zinc-200 px-2.5 py-1 text-xs font-medium text-zinc-600 hover:bg-zinc-50 disabled:opacity-40"
-            >
-              Expand all
-            </button>
-            <button
-              type="button"
-              onClick={collapseAll}
-              disabled={!anyExpanded}
-              className="rounded-md border border-zinc-200 px-2.5 py-1 text-xs font-medium text-zinc-600 hover:bg-zinc-50 disabled:opacity-40"
-            >
-              Collapse all
-            </button>
-          </div>
-        </div>
-
-        <ul className="space-y-3">
-          {groups.map((property) => {
-            const isPropertyExpanded = expandedPropertyIds.has(property.propertyId);
-
-            return (
-              <li
-                key={property.propertyId}
-                className="overflow-hidden rounded-xl border border-zinc-200 bg-white shadow-sm"
-              >
-                <button
-                  type="button"
-                  onClick={() => toggleProperty(property.propertyId)}
-                  className="flex w-full items-start gap-4 px-4 py-4 text-left transition-colors hover:bg-zinc-50/80 sm:px-5"
-                >
-                  <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg bg-zinc-900 text-white">
-                    <Building2 className="h-5 w-5" aria-hidden />
-                  </span>
-                  <div className="min-w-0 flex-1">
-                    <p className="text-[10px] font-medium uppercase tracking-wider text-zinc-500">
-                      Property
-                    </p>
-                    <p className="mt-0.5 text-base font-semibold text-zinc-900">
-                      {property.propertyAddress}
-                    </p>
-                    <div className="mt-2 flex flex-wrap gap-2">
-                      <span className="rounded-full bg-zinc-100 px-2.5 py-0.5 text-xs font-medium text-zinc-700">
-                        {property.units.length} unit
-                        {property.units.length === 1 ? "" : "s"}
-                      </span>
-                      <span className="rounded-full bg-zinc-100 px-2.5 py-0.5 text-xs font-medium text-zinc-700">
-                        {property.documentCount} file
-                        {property.documentCount === 1 ? "" : "s"}
-                      </span>
-                    </div>
-                  </div>
-                  <ChevronDown
-                    className={cn(
-                      "mt-2 h-5 w-5 shrink-0 text-zinc-400 transition-transform",
-                      isPropertyExpanded && "rotate-180",
-                    )}
-                    aria-hidden
-                  />
-                </button>
-
-                {isPropertyExpanded ? (
-                  <div className="space-y-3 border-t border-zinc-100 bg-zinc-50/40 px-4 py-4 sm:px-5">
-                    {property.units.map((unit) => {
-                      const unitKey = unitExpandKey(property.propertyId, unit.unitLabel);
-                      return (
-                        <UnitSection
-                          key={unitKey}
-                          unit={unit}
-                          isExpanded={expandedUnitKeys.has(unitKey)}
-                          onToggle={() =>
-                            toggleUnit(property.propertyId, unit.unitLabel)
-                          }
-                          onEdit={onEdit}
-                          onDeleted={onDeleted}
-                          isPending={isPending}
-                        />
-                      );
-                    })}
-                  </div>
-                ) : null}
-              </li>
-            );
-          })}
-        </ul>
-      </div>
+      {listBody}
     </section>
   );
 }

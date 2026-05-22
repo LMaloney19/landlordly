@@ -1,3 +1,4 @@
+import { EXPENSE_WHOLE_PROPERTY_LABEL } from "@/lib/expenses";
 import { endOfMonthIso, startOfMonthIso } from "@/lib/rent-payments";
 import { todayIso } from "@/lib/tenants";
 import type { Property, RentPayment, Tenant } from "@/types";
@@ -245,4 +246,119 @@ export function tenantRentStatus(
   if (daysUntilDue <= RENT_DUE_SOON_DAYS) return "due_soon";
 
   return null;
+}
+
+export function rentAlertUnitKey(unitLabel: string | null | undefined) {
+  const trimmed = unitLabel?.trim();
+  return trimmed ? trimmed : EXPENSE_WHOLE_PROPERTY_LABEL;
+}
+
+export function formatRentAlertUnitTitle(unitLabel: string) {
+  if (unitLabel === EXPENSE_WHOLE_PROPERTY_LABEL) return "Whole property";
+  return `Unit ${unitLabel}`;
+}
+
+export type RentAlertUnitGroup = {
+  unitLabel: string;
+  alertCount: number;
+  overdueCount: number;
+  dueSoonCount: number;
+  alerts: RentAlert[];
+};
+
+export type RentAlertPropertyGroup = {
+  propertyId: string;
+  propertyAddress: string;
+  alertCount: number;
+  overdueCount: number;
+  dueSoonCount: number;
+  units: RentAlertUnitGroup[];
+};
+
+/** Group rent alerts by property, then unit (overdue before due soon within each unit). */
+export function groupRentAlertsByPropertyAndUnit(
+  overdue: RentAlert[],
+  dueSoon: RentAlert[],
+  properties: { id: string; formattedAddress: string; units: { unitLabel: string }[] }[],
+): RentAlertPropertyGroup[] {
+  const allAlerts = [...overdue, ...dueSoon];
+  const propertyOrder = new Map(
+    properties.map((property, index) => [property.id, index]),
+  );
+
+  const byProperty = new Map<string, RentAlert[]>();
+  for (const alert of allAlerts) {
+    const list = byProperty.get(alert.propertyId) ?? [];
+    list.push(alert);
+    byProperty.set(alert.propertyId, list);
+  }
+
+  const groups: RentAlertPropertyGroup[] = [];
+
+  for (const [propertyId, propertyAlerts] of byProperty) {
+    const property = properties.find((item) => item.id === propertyId);
+    const address =
+      property?.formattedAddress ??
+      propertyAlerts[0]?.propertyAddress ??
+      "Property";
+
+    const unitKeys = new Set<string>();
+    if (property) {
+      for (const unit of property.units) {
+        unitKeys.add(unit.unitLabel);
+      }
+    }
+    for (const alert of propertyAlerts) {
+      unitKeys.add(rentAlertUnitKey(alert.unitLabel));
+    }
+
+    const sortedUnits = [...unitKeys].sort((a, b) => {
+      if (a === EXPENSE_WHOLE_PROPERTY_LABEL) return -1;
+      if (b === EXPENSE_WHOLE_PROPERTY_LABEL) return 1;
+      return a.localeCompare(b, undefined, { numeric: true });
+    });
+
+    const units: RentAlertUnitGroup[] = sortedUnits
+      .map((unitLabel) => {
+        const unitAlerts = propertyAlerts
+          .filter((alert) => rentAlertUnitKey(alert.unitLabel) === unitLabel)
+          .sort((a, b) => {
+            if (a.status !== b.status) {
+              return a.status === "overdue" ? -1 : 1;
+            }
+            return a.daysUntilDue - b.daysUntilDue;
+          });
+
+        return {
+          unitLabel,
+          alertCount: unitAlerts.length,
+          overdueCount: unitAlerts.filter((alert) => alert.status === "overdue")
+            .length,
+          dueSoonCount: unitAlerts.filter((alert) => alert.status === "due_soon")
+            .length,
+          alerts: unitAlerts,
+        };
+      })
+      .filter((unit) => unit.alertCount > 0);
+
+    groups.push({
+      propertyId,
+      propertyAddress: address,
+      alertCount: propertyAlerts.length,
+      overdueCount: propertyAlerts.filter((alert) => alert.status === "overdue")
+        .length,
+      dueSoonCount: propertyAlerts.filter((alert) => alert.status === "due_soon")
+        .length,
+      units,
+    });
+  }
+
+  groups.sort((a, b) => {
+    const orderA = propertyOrder.get(a.propertyId) ?? 999;
+    const orderB = propertyOrder.get(b.propertyId) ?? 999;
+    if (orderA !== orderB) return orderA - orderB;
+    return a.propertyAddress.localeCompare(b.propertyAddress);
+  });
+
+  return groups;
 }

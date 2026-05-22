@@ -11,14 +11,14 @@ import {
   type PropertyRow,
 } from "@/lib/properties";
 import { createClient } from "@/lib/supabase/client";
-import { buildRentAlerts } from "@/lib/rent-status";
+import { buildRentAlerts, groupRentAlertsByPropertyAndUnit } from "@/lib/rent-status";
 import { rowToRentPayment, type RentPaymentRow } from "@/lib/rent-payments";
 import {
   groupTenantsByPropertyAndUnit,
   rowToTenant,
   type TenantRow,
 } from "@/lib/tenants";
-import { RentAlertsPanel } from "@/components/rent/rent-alerts-panel";
+import { RentAlertsGroupedPanel } from "@/components/rent/rent-alerts-grouped-panel";
 import { TenantsGroupedList } from "@/components/tenants/tenants-grouped-list";
 import type { Property, RentPayment, Tenant } from "@/types";
 
@@ -181,6 +181,16 @@ export function TenantsPageClient({
   const rentAlerts = useMemo(
     () => buildRentAlerts(tenants, properties, payments),
     [tenants, properties, payments],
+  );
+
+  const groupedRentAlerts = useMemo(
+    () =>
+      groupRentAlertsByPropertyAndUnit(
+        rentAlerts.overdue,
+        rentAlerts.dueSoon,
+        properties,
+      ),
+    [rentAlerts.dueSoon, rentAlerts.overdue, properties],
   );
 
   function handleTenantUpdated(updated: Tenant) {
@@ -406,14 +416,11 @@ export function TenantsPageClient({
         </p>
       ) : null}
 
-      {rentAlerts.overdueCount > 0 || rentAlerts.dueSoonCount > 0 ? (
-        <section className="mb-6">
-          <RentAlertsPanel
-            overdue={rentAlerts.overdue}
-            dueSoon={rentAlerts.dueSoon}
-            compact
-          />
-        </section>
+      {groupedRentAlerts.length > 0 ? (
+        <RentAlertsGroupedPanel
+          groups={groupedRentAlerts}
+          collapseKey={search}
+        />
       ) : null}
 
       <section className="overflow-hidden rounded-lg border border-zinc-200 bg-white shadow-sm">
