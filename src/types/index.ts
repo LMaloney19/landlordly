@@ -84,6 +84,8 @@ export type Tenant = {
   petType: string | null;
 };
 
+export type RentPaymentSource = "landlord" | "tenant_portal" | "stripe";
+
 export type RentPayment = {
   id: string;
   propertyId: string;
@@ -93,6 +95,7 @@ export type RentPayment = {
   amount: number;
   paidAt: string;
   notes: string | null;
+  source?: RentPaymentSource;
 };
 
 export type RentAlertStatus = "overdue" | "due_soon";

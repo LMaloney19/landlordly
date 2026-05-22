@@ -2,7 +2,7 @@ import {
   formatAddressFromJoin,
   type PropertyAddressFields,
 } from "@/lib/properties";
-import type { RentPayment } from "@/types";
+import type { RentPayment, RentPaymentSource } from "@/types";
 
 export type RentPaymentRow = {
   id: string;
@@ -13,6 +13,7 @@ export type RentPaymentRow = {
   amount: number;
   paid_at: string;
   notes: string | null;
+  source?: RentPaymentSource | null;
   created_at: string;
   properties: PropertyAddressFields | PropertyAddressFields[] | null;
 };
@@ -27,6 +28,7 @@ export function rowToRentPayment(row: RentPaymentRow): RentPayment {
     amount: Number(row.amount),
     paidAt: row.paid_at,
     notes: row.notes,
+    source: row.source ?? undefined,
   };
 }
 

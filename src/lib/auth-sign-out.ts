@@ -4,7 +4,7 @@ import { disableDevBypass } from "@/lib/dev-bypass";
 import { createClient } from "@/lib/supabase/client";
 
 /** Clears Supabase session, dev bypass flag, and server auth cookies. */
-export async function signOutAndGoToLogin() {
+export async function signOutAndGoToLogin(loginPath = "/login") {
   disableDevBypass();
   const supabase = createClient();
   await supabase.auth.signOut();
@@ -12,5 +12,5 @@ export async function signOutAndGoToLogin() {
     method: "POST",
     credentials: "same-origin",
   });
-  window.location.assign("/login");
+  window.location.assign(loginPath);
 }

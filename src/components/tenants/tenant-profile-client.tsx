@@ -19,6 +19,7 @@ import {
 import { rowToRentPayment, type RentPaymentRow } from "@/lib/rent-payments";
 import { createClient } from "@/lib/supabase/client";
 import { rowToTenant, type TenantRow } from "@/lib/tenants";
+import { TenantPortalInviteCard } from "@/components/tenants/tenant-portal-invite-card";
 import { cn, formatCurrency } from "@/lib/utils";
 import type {
   MaintenanceRequest,
@@ -125,6 +126,8 @@ function isLinkedToTenantUnit(
 
 export function TenantProfileClient({ tenantId }: TenantProfileClientProps) {
   const [tenant, setTenant] = useState<Tenant | null>(null);
+  const [portalLinked, setPortalLinked] = useState(false);
+  const [portalLinkedAt, setPortalLinkedAt] = useState<string | null>(null);
   const [properties, setProperties] = useState<Property[]>([]);
   const [payments, setPayments] = useState<RentPayment[]>([]);
   const [maintenanceRequests, setMaintenanceRequests] = useState<
@@ -169,9 +172,15 @@ export function TenantProfileClient({ tenantId }: TenantProfileClientProps) {
         return;
       }
 
-      const loadedTenant = rowToTenant(tenantData as TenantRow);
+      const row = tenantData as TenantRow & {
+        portal_auth_user_id?: string | null;
+        portal_linked_at?: string | null;
+      };
+      const loadedTenant = rowToTenant(row);
       setTenant(loadedTenant);
       setDraft(draftFromTenant(loadedTenant));
+      setPortalLinked(Boolean(row.portal_auth_user_id));
+      setPortalLinkedAt(row.portal_linked_at ?? null);
 
       const [propertiesResult, paymentsResult, maintenanceResult] =
         await Promise.all([
@@ -413,6 +422,15 @@ export function TenantProfileClient({ tenantId }: TenantProfileClientProps) {
         </p>
       ) : null}
 
+      <section className="mb-6">
+        <TenantPortalInviteCard
+          tenantId={tenant.id}
+          tenantEmail={tenant.email}
+          portalLinked={portalLinked}
+          portalLinkedAt={portalLinkedAt}
+        />
+      </section>
+
       <section className="grid gap-6 lg:grid-cols-3">
         <article className="rounded-lg border border-zinc-200 bg-white p-6 shadow-sm lg:col-span-2">
           <h2 className="text-sm font-semibold text-zinc-900">Full details</h2>
@@ -537,7 +555,9 @@ export function TenantProfileClient({ tenantId }: TenantProfileClientProps) {
                       <p className="mt-1 text-zinc-600">{payment.notes}</p>
                     ) : null}
                   </div>
-                  <span className="text-xs text-zinc-500">Paid</span>
+                  <span className="text-xs text-zinc-500">
+                    {payment.source === "tenant_portal" ? "Tenant portal" : "Paid"}
+                  </span>
                 </li>
               ))}
             </ul>
