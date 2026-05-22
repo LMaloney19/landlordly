@@ -1,29 +1,37 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { PageHeader } from "@/components/ui/page-header";
 import { DocumentUploadForm } from "@/components/documents/document-upload-form";
-import { DocumentList } from "@/components/documents/document-list";
-import type { Document, Property } from "@/types";
+import { DocumentsGroupedList } from "@/components/documents/documents-grouped-list";
+import { groupDocumentsByPropertyUnitTenant } from "@/lib/documents";
+import type { Document, Property, Tenant } from "@/types";
 
 type DocumentsPageProps = {
   properties: Property[];
+  tenants: Tenant[];
   initialDocuments: Document[];
   loadError?: string;
 };
 
 export function DocumentsPageClient({
   properties,
+  tenants,
   initialDocuments,
   loadError,
 }: DocumentsPageProps) {
   const [documents, setDocuments] = useState<Document[]>(initialDocuments);
 
+  const groups = useMemo(
+    () => groupDocumentsByPropertyUnitTenant(documents, properties, tenants),
+    [documents, properties, tenants],
+  );
+
   return (
     <>
       <PageHeader
         title="Documents"
-        description="Store leases, inspection reports, and receipts in one place."
+        description="Leases, receipts, and inspections organized by property, unit, and tenant."
       />
 
       {loadError ? (
@@ -38,10 +46,12 @@ export function DocumentsPageClient({
       <section className="grid gap-6 lg:grid-cols-[minmax(0,360px)_1fr]">
         <DocumentUploadForm
           properties={properties}
+          tenants={tenants}
           onUploaded={(doc) => setDocuments((current) => [doc, ...current])}
         />
-        <DocumentList
-          documents={documents}
+        <DocumentsGroupedList
+          groups={groups}
+          collapseKey={String(documents.length)}
           onDeleted={(id) =>
             setDocuments((current) => current.filter((d) => d.id !== id))
           }

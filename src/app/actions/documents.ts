@@ -6,15 +6,17 @@ import { getServerUser } from "@/lib/supabase/get-user";
 import { isSupabaseConfigured } from "@/lib/supabase/config";
 import {
   DOCUMENT_BUCKET,
+  DOCUMENT_SELECT,
   rowToDocument,
   type DocumentRow,
 } from "@/lib/documents";
-import { PROPERTY_ADDRESS_SELECT } from "@/lib/properties";
 import type { Document, DocumentCategory } from "@/types";
 import type { ActionResult } from "@/app/actions/properties";
 
 export type DocumentInput = {
   propertyId?: string;
+  unitLabel?: string;
+  tenantId?: string;
   name: string;
   filePath: string;
   category: DocumentCategory;
@@ -40,7 +42,7 @@ export async function getDocuments(): Promise<ActionResult<Document[]>> {
 
   const { data, error } = await supabase
     .from("documents")
-    .select(`*, properties(${PROPERTY_ADDRESS_SELECT})`)
+    .select(DOCUMENT_SELECT)
     .order("created_at", { ascending: false });
 
   if (error) {
@@ -73,18 +75,23 @@ export async function saveDocument(
     return { success: false, error: "Not authenticated." };
   }
 
+  const unitLabel = input.unitLabel?.trim() || null;
+  const tenantId = input.tenantId?.trim() || null;
+
   const { data, error } = await supabase
     .from("documents")
     .insert({
       user_id: user.id,
       property_id: input.propertyId || null,
+      unit_label: unitLabel,
+      tenant_id: tenantId,
       name: input.name.trim(),
       file_path: input.filePath,
       category: input.category,
       mime_type: input.mimeType ?? null,
       size_bytes: input.sizeBytes ?? null,
     })
-    .select(`*, properties(${PROPERTY_ADDRESS_SELECT})`)
+    .select(DOCUMENT_SELECT)
     .single();
 
   if (error) {

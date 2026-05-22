@@ -1,29 +1,64 @@
 "use client";
 
-import { useState, useTransition, type FormEvent } from "react";
+import { useMemo, useState, useTransition, type FormEvent } from "react";
 import { saveDocument } from "@/app/actions/documents";
 import { createClient } from "@/lib/supabase/client";
 import { signedOutSaveMessage } from "@/lib/dev-bypass";
 import {
   buildStoragePath,
   DOCUMENT_BUCKET,
+  DOCUMENT_WHOLE_PROPERTY_LABEL,
 } from "@/lib/documents";
-import type { Document, DocumentCategory, Property } from "@/types";
+import type { Document, DocumentCategory, Property, Tenant } from "@/types";
 
 type DocumentUploadFormProps = {
   properties: Property[];
+  tenants: Tenant[];
   onUploaded: (document: Document) => void;
 };
 
 export function DocumentUploadForm({
   properties,
+  tenants,
   onUploaded,
 }: DocumentUploadFormProps) {
   const [propertyId, setPropertyId] = useState("");
+  const [unitLabel, setUnitLabel] = useState(DOCUMENT_WHOLE_PROPERTY_LABEL);
+  const [tenantId, setTenantId] = useState("");
   const [category, setCategory] = useState<DocumentCategory>("lease");
   const [file, setFile] = useState<File | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
+
+  const selectedProperty = properties.find((property) => property.id === propertyId);
+
+  const unitOptions = useMemo(() => {
+    if (!selectedProperty) return [];
+    return [
+      { value: DOCUMENT_WHOLE_PROPERTY_LABEL, label: "Whole property" },
+      ...selectedProperty.units.map((unit) => ({
+        value: unit.unitLabel,
+        label: `Unit ${unit.unitLabel}`,
+      })),
+    ];
+  }, [selectedProperty]);
+
+  const tenantOptions = useMemo(() => {
+    if (!propertyId) return [];
+    const atProperty = tenants.filter((tenant) => tenant.propertyId === propertyId);
+    if (unitLabel === DOCUMENT_WHOLE_PROPERTY_LABEL) {
+      return atProperty;
+    }
+    return atProperty.filter(
+      (tenant) => (tenant.unitLabel?.trim() || "") === unitLabel,
+    );
+  }, [propertyId, unitLabel, tenants]);
+
+  function handlePropertyChange(nextPropertyId: string) {
+    setPropertyId(nextPropertyId);
+    setUnitLabel(DOCUMENT_WHOLE_PROPERTY_LABEL);
+    setTenantId("");
+  }
 
   function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -62,8 +97,13 @@ export function DocumentUploadForm({
         return;
       }
 
+      const resolvedUnit =
+        unitLabel === DOCUMENT_WHOLE_PROPERTY_LABEL ? undefined : unitLabel;
+
       const result = await saveDocument({
         propertyId: propertyId || undefined,
+        unitLabel: propertyId ? resolvedUnit : undefined,
+        tenantId: tenantId || undefined,
         name: file.name,
         filePath,
         category,
@@ -79,6 +119,8 @@ export function DocumentUploadForm({
       onUploaded(result.data);
       setFile(null);
       setPropertyId("");
+      setUnitLabel(DOCUMENT_WHOLE_PROPERTY_LABEL);
+      setTenantId("");
       setCategory("lease");
     });
   }
@@ -124,7 +166,7 @@ export function DocumentUploadForm({
           </span>
           <select
             value={propertyId}
-            onChange={(e) => setPropertyId(e.target.value)}
+            onChange={(e) => handlePropertyChange(e.target.value)}
             className="mt-1.5 w-full rounded-md border border-zinc-200 bg-white px-3 py-2 text-sm focus:border-zinc-400 focus:outline-none focus:ring-2 focus:ring-zinc-200"
           >
             <option value="">No property</option>
@@ -135,6 +177,46 @@ export function DocumentUploadForm({
             ))}
           </select>
         </label>
+
+        {propertyId ? (
+          <>
+            <label className="block">
+              <span className="text-sm font-medium text-zinc-700">Unit</span>
+              <select
+                value={unitLabel}
+                onChange={(e) => {
+                  setUnitLabel(e.target.value);
+                  setTenantId("");
+                }}
+                className="mt-1.5 w-full rounded-md border border-zinc-200 bg-white px-3 py-2 text-sm focus:border-zinc-400 focus:outline-none focus:ring-2 focus:ring-zinc-200"
+              >
+                {unitOptions.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+
+            <label className="block">
+              <span className="text-sm font-medium text-zinc-700">
+                Tenant (optional)
+              </span>
+              <select
+                value={tenantId}
+                onChange={(e) => setTenantId(e.target.value)}
+                className="mt-1.5 w-full rounded-md border border-zinc-200 bg-white px-3 py-2 text-sm focus:border-zinc-400 focus:outline-none focus:ring-2 focus:ring-zinc-200"
+              >
+                <option value="">Property-wide / no tenant</option>
+                {tenantOptions.map((tenant) => (
+                  <option key={tenant.id} value={tenant.id}>
+                    {tenant.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+          </>
+        ) : null}
       </fieldset>
 
       {error ? (

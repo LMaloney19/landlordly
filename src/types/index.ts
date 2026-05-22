@@ -42,6 +42,9 @@ export type Document = {
   id: string;
   propertyId: string | null;
   propertyAddress: string | null;
+  unitLabel: string | null;
+  tenantId: string | null;
+  tenantName: string | null;
   name: string;
   filePath: string;
   category: DocumentCategory;
