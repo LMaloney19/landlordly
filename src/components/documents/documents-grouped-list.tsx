@@ -15,7 +15,7 @@ import {
   getDocumentDownloadUrl,
 } from "@/app/actions/documents";
 import {
-  CATEGORY_LABELS,
+  documentCategoryLabel,
   DOCUMENT_WHOLE_PROPERTY_LABEL,
   formatDocumentUnitTitle,
   formatFileSize,
@@ -109,7 +109,7 @@ function DocumentRow({
                 categoryBadgeClass(doc.category),
               )}
             >
-              {CATEGORY_LABELS[doc.category]}
+              {documentCategoryLabel(doc.category, doc.categoryOther)}
             </span>
             <span>
               {formatFileSize(doc.sizeBytes)} · {formatDate(doc.createdAt)}

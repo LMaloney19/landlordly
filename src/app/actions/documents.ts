@@ -5,8 +5,10 @@ import { createClient } from "@/lib/supabase/server";
 import { getServerUser } from "@/lib/supabase/get-user";
 import { isSupabaseConfigured } from "@/lib/supabase/config";
 import {
+  categoryOtherValidationError,
   DOCUMENT_BUCKET,
   DOCUMENT_SELECT,
+  normalizeCategoryOther,
   rowToDocument,
   type DocumentRow,
 } from "@/lib/documents";
@@ -20,6 +22,7 @@ export type DocumentInput = {
   name: string;
   filePath: string;
   category: DocumentCategory;
+  categoryOther?: string;
   mimeType?: string;
   sizeBytes?: number;
 };
@@ -28,6 +31,7 @@ export type DocumentUpdateInput = {
   id: string;
   name: string;
   category: DocumentCategory;
+  categoryOther?: string;
   propertyId?: string | null;
   unitLabel?: string;
   tenantId?: string;
@@ -86,6 +90,11 @@ export async function saveDocument(
 
   const unitLabel = input.unitLabel?.trim() || null;
   const tenantId = input.tenantId?.trim() || null;
+  const categoryOther = normalizeCategoryOther(input.category, input.categoryOther);
+  const categoryError = categoryOtherValidationError(input.category, categoryOther);
+  if (categoryError) {
+    return { success: false, error: categoryError };
+  }
 
   const { data, error } = await supabase
     .from("documents")
@@ -97,6 +106,7 @@ export async function saveDocument(
       name: input.name.trim(),
       file_path: input.filePath,
       category: input.category,
+      category_other: categoryOther,
       mime_type: input.mimeType ?? null,
       size_bytes: input.sizeBytes ?? null,
     })
@@ -138,12 +148,18 @@ export async function updateDocument(
   const propertyId = input.propertyId?.trim() || null;
   const unitLabel = propertyId ? input.unitLabel?.trim() || null : null;
   const tenantId = propertyId ? input.tenantId?.trim() || null : null;
+  const categoryOther = normalizeCategoryOther(input.category, input.categoryOther);
+  const categoryError = categoryOtherValidationError(input.category, categoryOther);
+  if (categoryError) {
+    return { success: false, error: categoryError };
+  }
 
   const { data, error } = await supabase
     .from("documents")
     .update({
       name,
       category: input.category,
+      category_other: categoryOther,
       property_id: propertyId,
       unit_label: unitLabel,
       tenant_id: tenantId,

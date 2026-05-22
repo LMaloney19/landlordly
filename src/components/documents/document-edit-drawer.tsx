@@ -2,7 +2,12 @@
 
 import { useMemo, useState, useTransition, type FormEvent } from "react";
 import { updateDocument } from "@/app/actions/documents";
-import { DOCUMENT_WHOLE_PROPERTY_LABEL } from "@/lib/documents";
+import { DocumentCategoryFields } from "@/components/documents/document-category-fields";
+import {
+  categoryOtherValidationError,
+  DOCUMENT_WHOLE_PROPERTY_LABEL,
+  normalizeCategoryOther,
+} from "@/lib/documents";
 import type { Document, DocumentCategory, Property, Tenant } from "@/types";
 
 const inputClass =
@@ -11,6 +16,7 @@ const inputClass =
 type DocumentDraft = {
   name: string;
   category: DocumentCategory;
+  categoryOther: string;
   propertyId: string;
   unitLabel: string;
   tenantId: string;
@@ -20,6 +26,7 @@ function draftFromDocument(document: Document): DocumentDraft {
   return {
     name: document.name,
     category: document.category,
+    categoryOther: document.categoryOther ?? "",
     propertyId: document.propertyId ?? "",
     unitLabel: document.unitLabel?.trim()
       ? document.unitLabel
@@ -100,6 +107,19 @@ export function DocumentEditDrawer({
       return;
     }
 
+    const normalizedOther = normalizeCategoryOther(
+      draft.category,
+      draft.categoryOther,
+    );
+    const categoryError = categoryOtherValidationError(
+      draft.category,
+      normalizedOther,
+    );
+    if (categoryError) {
+      setError(categoryError);
+      return;
+    }
+
     startTransition(async () => {
       const resolvedUnit =
         draft.unitLabel === DOCUMENT_WHOLE_PROPERTY_LABEL
@@ -110,6 +130,7 @@ export function DocumentEditDrawer({
         id: document.id,
         name: draft.name.trim(),
         category: draft.category,
+        categoryOther: normalizedOther ?? undefined,
         propertyId: draft.propertyId || null,
         unitLabel: draft.propertyId ? resolvedUnit : undefined,
         tenantId: draft.tenantId || undefined,
@@ -164,21 +185,15 @@ export function DocumentEditDrawer({
               />
             </label>
 
-            <label className="block">
-              <span className="text-sm font-medium text-zinc-700">Category</span>
-              <select
-                value={draft.category}
-                onChange={(event) =>
-                  updateDraft({ category: event.target.value as DocumentCategory })
-                }
-                className={inputClass}
-              >
-                <option value="lease">Lease</option>
-                <option value="receipt">Receipt</option>
-                <option value="inspection">Inspection</option>
-                <option value="other">Other</option>
-              </select>
-            </label>
+            <DocumentCategoryFields
+              category={draft.category}
+              categoryOther={draft.categoryOther}
+              disabled={isPending}
+              onCategoryChange={(category) => updateDraft({ category })}
+              onCategoryOtherChange={(categoryOther) =>
+                updateDraft({ categoryOther })
+              }
+            />
 
             <label className="block">
               <span className="text-sm font-medium text-zinc-700">Property</span>

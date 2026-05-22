@@ -22,6 +22,35 @@ export const CATEGORY_LABELS: Record<DocumentCategory, string> = {
   other: "Other",
 };
 
+export function normalizeCategoryOther(
+  category: DocumentCategory,
+  value: string | undefined | null,
+): string | null {
+  if (category !== "other") return null;
+  const trimmed = value?.trim() ?? "";
+  return trimmed || null;
+}
+
+export function categoryOtherValidationError(
+  category: DocumentCategory,
+  categoryOther: string | null,
+): string | null {
+  if (category === "other" && !categoryOther) {
+    return "Describe what type of document this is.";
+  }
+  return null;
+}
+
+export function documentCategoryLabel(
+  category: DocumentCategory,
+  categoryOther: string | null,
+): string {
+  if (category === "other" && categoryOther) {
+    return categoryOther;
+  }
+  return CATEGORY_LABELS[category];
+}
+
 export type DocumentRow = {
   id: string;
   user_id: string;
@@ -31,6 +60,7 @@ export type DocumentRow = {
   name: string;
   file_path: string;
   category: DocumentCategory;
+  category_other?: string | null;
   mime_type: string | null;
   size_bytes: number | null;
   created_at: string;
@@ -63,6 +93,7 @@ export function rowToDocument(row: DocumentRow): Document {
     name: row.name,
     filePath: row.file_path,
     category: row.category,
+    categoryOther: row.category_other?.trim() || null,
     mimeType: row.mime_type,
     sizeBytes: row.size_bytes != null ? Number(row.size_bytes) : null,
     createdAt: row.created_at,

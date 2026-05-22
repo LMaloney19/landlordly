@@ -48,6 +48,7 @@ export type Document = {
   name: string;
   filePath: string;
   category: DocumentCategory;
+  categoryOther: string | null;
   mimeType: string | null;
   sizeBytes: number | null;
   createdAt: string;

@@ -4,10 +4,13 @@ import { useMemo, useState, useTransition, type FormEvent } from "react";
 import { saveDocument } from "@/app/actions/documents";
 import { createClient } from "@/lib/supabase/client";
 import { signedOutSaveMessage } from "@/lib/dev-bypass";
+import { DocumentCategoryFields } from "@/components/documents/document-category-fields";
 import {
   buildStoragePath,
+  categoryOtherValidationError,
   DOCUMENT_BUCKET,
   DOCUMENT_WHOLE_PROPERTY_LABEL,
+  normalizeCategoryOther,
 } from "@/lib/documents";
 import type { Document, DocumentCategory, Property, Tenant } from "@/types";
 
@@ -26,6 +29,7 @@ export function DocumentUploadForm({
   const [unitLabel, setUnitLabel] = useState(DOCUMENT_WHOLE_PROPERTY_LABEL);
   const [tenantId, setTenantId] = useState("");
   const [category, setCategory] = useState<DocumentCategory>("lease");
+  const [categoryOther, setCategoryOther] = useState("");
   const [file, setFile] = useState<File | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
@@ -74,6 +78,13 @@ export function DocumentUploadForm({
       return;
     }
 
+    const normalizedOther = normalizeCategoryOther(category, categoryOther);
+    const categoryError = categoryOtherValidationError(category, normalizedOther);
+    if (categoryError) {
+      setError(categoryError);
+      return;
+    }
+
     startTransition(async () => {
       const supabase = createClient();
       const {
@@ -107,6 +118,7 @@ export function DocumentUploadForm({
         name: file.name,
         filePath,
         category,
+        categoryOther: normalizedOther ?? undefined,
         mimeType: file.type || undefined,
         sizeBytes: file.size,
       });
@@ -122,6 +134,7 @@ export function DocumentUploadForm({
       setUnitLabel(DOCUMENT_WHOLE_PROPERTY_LABEL);
       setTenantId("");
       setCategory("lease");
+      setCategoryOther("");
     });
   }
 
@@ -146,19 +159,13 @@ export function DocumentUploadForm({
           />
         </label>
 
-        <label className="block">
-          <span className="text-sm font-medium text-zinc-700">Category</span>
-          <select
-            value={category}
-            onChange={(e) => setCategory(e.target.value as DocumentCategory)}
-            className="mt-1.5 w-full rounded-md border border-zinc-200 bg-white px-3 py-2 text-sm focus:border-zinc-400 focus:outline-none focus:ring-2 focus:ring-zinc-200"
-          >
-            <option value="lease">Lease</option>
-            <option value="receipt">Receipt</option>
-            <option value="inspection">Inspection</option>
-            <option value="other">Other</option>
-          </select>
-        </label>
+        <DocumentCategoryFields
+          category={category}
+          categoryOther={categoryOther}
+          disabled={isPending}
+          onCategoryChange={setCategory}
+          onCategoryOtherChange={setCategoryOther}
+        />
 
         <label className="block">
           <span className="text-sm font-medium text-zinc-700">
