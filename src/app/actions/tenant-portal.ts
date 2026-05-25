@@ -31,10 +31,129 @@ export type TenantPortalAccessStatus = {
   accessUrl: string | null;
   expiresAt: string | null;
   linkedAt: string | null;
+  /** Another tenant uses the same email — portal logins must be separate. */
+  emailConflictWith: string | null;
 };
 
 function portalAccessUrl(token: string) {
   return `${getAppUrl()}/portal/accept?token=${token}`;
+}
+
+function normalizeEmail(email: string | null | undefined) {
+  return email?.trim().toLowerCase() ?? "";
+}
+
+async function findOtherTenantWithSameEmail(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  landlordUserId: string,
+  tenantId: string,
+  email: string,
+) {
+  const normalized = normalizeEmail(email);
+  if (!normalized) return null;
+
+  const { data, error } = await supabase
+    .from("tenants")
+    .select("id, name, email")
+    .eq("user_id", landlordUserId)
+    .neq("id", tenantId)
+    .is("archived_at", null);
+
+  if (error || !data) return null;
+
+  return (
+    data.find((row) => normalizeEmail(row.email) === normalized) ?? null
+  );
+}
+
+export type PortalInvitePreview = {
+  tenantId: string;
+  tenantName: string;
+  tenantEmail: string | null;
+};
+
+export async function getPortalInvitePreview(
+  token: string,
+): Promise<ActionResult<PortalInvitePreview>> {
+  if (!isSupabaseConfigured()) {
+    return { success: false, error: "Supabase is not configured." };
+  }
+
+  const trimmed = token.trim();
+  if (!trimmed) {
+    return { success: false, error: "Portal access link is invalid." };
+  }
+
+  const supabase = await createClient();
+  const { data: invite, error: inviteError } = await supabase
+    .from("tenant_portal_invites")
+    .select("tenant_id, expires_at, accepted_at")
+    .eq("token", trimmed)
+    .maybeSingle();
+
+  if (inviteError || !invite) {
+    return { success: false, error: "Portal access link not found." };
+  }
+
+  if (invite.accepted_at) {
+    return { success: false, error: "This portal is already set up." };
+  }
+
+  if (invite.expires_at && new Date(invite.expires_at) < new Date()) {
+    return { success: false, error: "This access link has expired." };
+  }
+
+  const { data: tenant, error: tenantError } = await supabase
+    .from("tenants")
+    .select("id, name, email")
+    .eq("id", invite.tenant_id)
+    .maybeSingle();
+
+  if (tenantError || !tenant) {
+    return { success: false, error: "Tenant record not found." };
+  }
+
+  return {
+    success: true,
+    data: {
+      tenantId: tenant.id,
+      tenantName: tenant.name,
+      tenantEmail: tenant.email,
+    },
+  };
+}
+
+export async function getCurrentPortalTenantName(): Promise<
+  ActionResult<{ tenantId: string; tenantName: string } | null>
+> {
+  if (!isSupabaseConfigured()) {
+    return { success: false, error: "Supabase is not configured." };
+  }
+
+  const supabase = await createClient();
+  const user = await getServerUser(supabase);
+  if (!user) {
+    return { success: true, data: null };
+  }
+
+  const { data, error } = await supabase
+    .from("tenants")
+    .select("id, name")
+    .eq("portal_auth_user_id", user.id)
+    .maybeSingle();
+
+  if (error) {
+    return { success: false, error: error.message };
+  }
+
+  if (!data) {
+    return { success: true, data: null };
+  }
+
+  return {
+    success: true,
+    data: { tenantId: data.id, tenantName: data.name },
+  };
 }
 
 async function getLandlordTenant(
@@ -208,6 +327,13 @@ export async function acceptTenantPortalInvite(
 
   const row = tenantBeforeLink as TenantRowWithPortal;
 
+  if (user.id === row.user_id) {
+    return {
+      success: false,
+      error: `This link is for tenant ${row.name}. You are signed in as the landlord — sign out, then have ${row.name} open the link with their own account (or use incognito).`,
+    };
+  }
+
   if (row.portal_auth_user_id && row.portal_auth_user_id !== user.id) {
     return {
       success: false,
@@ -244,12 +370,25 @@ export async function acceptTenantPortalInvite(
   if (existingPortalTenant) {
     return {
       success: false,
-      error: `This login is already linked to ${existingPortalTenant.name}. Use a different email or account for this tenant.`,
+      error: `This login is already linked to ${existingPortalTenant.name}'s portal. To set up ${row.name}, sign out, then sign in with ${row.email ?? "the email on this tenant record"} (or create a new account).`,
     };
   }
 
-  const tenantEmail = row.email?.trim().toLowerCase();
-  const userEmail = user.email?.trim().toLowerCase();
+  const emailConflict = await findOtherTenantWithSameEmail(
+    supabase,
+    row.user_id,
+    row.id,
+    row.email ?? "",
+  );
+  if (emailConflict) {
+    return {
+      success: false,
+      error: `${row.name} shares the same email as ${emailConflict.name}. Each tenant needs a unique email for portal access — update the email on the tenant profile first.`,
+    };
+  }
+
+  const tenantEmail = normalizeEmail(row.email);
+  const userEmail = normalizeEmail(user.email);
   if (tenantEmail && userEmail && tenantEmail !== userEmail) {
     return {
       success: false,
@@ -321,6 +460,19 @@ export async function getTenantPortalAccessStatus(
     return { success: false, error: "Tenant not found." };
   }
 
+  let emailConflictWith: string | null = null;
+  if (tenant.email?.trim()) {
+    const conflict = await findOtherTenantWithSameEmail(
+      supabase,
+      user.id,
+      tenantId,
+      tenant.email,
+    );
+    if (conflict) {
+      emailConflictWith = conflict.name;
+    }
+  }
+
   if (tenant.portal_auth_user_id) {
     return {
       success: true,
@@ -329,6 +481,7 @@ export async function getTenantPortalAccessStatus(
         accessUrl: null,
         expiresAt: null,
         linkedAt: tenant.portal_linked_at ?? null,
+        emailConflictWith,
       },
     };
   }
@@ -341,6 +494,7 @@ export async function getTenantPortalAccessStatus(
         accessUrl: null,
         expiresAt: null,
         linkedAt: null,
+        emailConflictWith: null,
       },
     };
   }
@@ -369,6 +523,7 @@ export async function getTenantPortalAccessStatus(
         accessUrl: portalAccessUrl(pendingInvite.token),
         expiresAt: pendingInvite.expires_at,
         linkedAt: null,
+        emailConflictWith,
       },
     };
   }
@@ -380,6 +535,7 @@ export async function getTenantPortalAccessStatus(
       accessUrl: null,
       expiresAt: null,
       linkedAt: null,
+      emailConflictWith,
     },
   };
 }
@@ -477,6 +633,19 @@ export async function createTenantPortalInvite(
     return {
       success: false,
       error: "Add the tenant's email before enabling portal access.",
+    };
+  }
+
+  const emailConflict = await findOtherTenantWithSameEmail(
+    supabase,
+    user.id,
+    tenantId,
+    tenant.email,
+  );
+  if (emailConflict) {
+    return {
+      success: false,
+      error: `This email is also on ${emailConflict.name}. Each tenant needs their own email for an independent portal — change one of the emails first.`,
     };
   }
 

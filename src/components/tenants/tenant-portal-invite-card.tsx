@@ -41,6 +41,7 @@ export function TenantPortalInviteCard({
   );
   const [accessUrl, setAccessUrl] = useState<string | null>(null);
   const [linkedAt, setLinkedAt] = useState<string | null>(portalLinkedAt);
+  const [emailConflictWith, setEmailConflictWith] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
   const [loadingStatus, setLoadingStatus] = useState(true);
@@ -63,6 +64,7 @@ export function TenantPortalInviteCard({
       setState(result.data.state);
       setAccessUrl(result.data.accessUrl);
       setLinkedAt(result.data.linkedAt ?? portalLinkedAt);
+      setEmailConflictWith(result.data.emailConflictWith);
     }
 
     void loadStatus();
@@ -151,10 +153,17 @@ export function TenantPortalInviteCard({
       </div>
 
       <p className="mt-1 text-sm text-zinc-500">
-        Send one stable link per tenant. After they create an account and open the link, they
-        sign in at <span className="font-mono text-xs text-zinc-700">/portal</span> anytime —
-        no new invites.
+        Send one stable link per tenant. Each tenant needs their own email and must open the
+        link themselves (not while you are signed in as landlord). After setup they use{" "}
+        <span className="font-mono text-xs text-zinc-700">/portal</span> anytime.
       </p>
+
+      {emailConflictWith ? (
+        <p className="mt-3 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+          This tenant shares an email with <strong>{emailConflictWith}</strong>. Use a unique
+          email on each tenant profile so portal logins stay independent.
+        </p>
+      ) : null}
 
       {state === "active" ? (
         <p className="mt-4 rounded-md bg-emerald-50 px-3 py-2 text-sm text-emerald-800">
