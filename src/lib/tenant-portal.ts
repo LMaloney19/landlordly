@@ -2,8 +2,6 @@ import { formatAddressFromJoin, type PropertyAddressFields } from "@/lib/propert
 import { normalizeRentDueDay } from "@/lib/rent-status";
 import type { Tenant } from "@/types";
 
-export const TENANT_PORTAL_INVITE_DAYS = 14;
-
 export type TenantRowWithPortal = {
   id: string;
   user_id: string;
@@ -47,9 +45,3 @@ export function rowToPortalTenant(row: TenantRowWithPortal): Tenant & {
 }
 
 export const TENANT_SELECT_PORTAL = `*, properties(address_line1, address_line2, city, state, postal_code, country)`;
-
-export function inviteExpiresAt(days = TENANT_PORTAL_INVITE_DAYS) {
-  const date = new Date();
-  date.setDate(date.getDate() + days);
-  return date.toISOString();
-}

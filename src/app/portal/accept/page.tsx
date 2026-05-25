@@ -12,7 +12,8 @@ export default async function PortalAcceptPage({ searchParams }: PortalAcceptPag
   if (!token?.trim()) {
     return (
       <p className="rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700" role="alert">
-        Invite link is missing a token. Ask your landlord for a new link.
+        Portal access link is incomplete. Ask your landlord to copy the link from your tenant
+        profile.
       </p>
     );
   }

@@ -131,8 +131,8 @@ export function PortalHomeClient({
       <section className="rounded-lg border border-amber-200 bg-amber-50 p-6 text-sm text-amber-900">
         <h1 className="text-lg font-semibold text-amber-950">Finish setup</h1>
         <p className="mt-2">
-          Sign in with the email your landlord invited, then open the invite link they sent
-          you. After that, you can report maintenance and rent payments here.
+          Sign in with the email on your lease, open the portal access link your landlord
+          sent once, then bookmark /portal. After setup, you do not need the link again.
         </p>
       </section>
     );

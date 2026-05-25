@@ -9,7 +9,6 @@ import { createClient } from "@/lib/supabase/server";
 import { getServerUser } from "@/lib/supabase/get-user";
 import { isSupabaseConfigured } from "@/lib/supabase/config";
 import {
-  inviteExpiresAt,
   rowToPortalTenant,
   TENANT_SELECT_PORTAL,
   type TenantRowWithPortal,
@@ -24,6 +23,32 @@ export type PortalHomeData = {
   openMaintenance: MaintenanceRequest[];
   recentPayments: RentPayment[];
 };
+
+export type TenantPortalAccessState = "not_enabled" | "pending" | "active";
+
+export type TenantPortalAccessStatus = {
+  state: TenantPortalAccessState;
+  accessUrl: string | null;
+  expiresAt: string | null;
+  linkedAt: string | null;
+};
+
+function portalAccessUrl(token: string) {
+  return `${getAppUrl()}/portal/accept?token=${token}`;
+}
+
+async function getLandlordTenant(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  tenantId: string,
+  userId: string,
+) {
+  return supabase
+    .from("tenants")
+    .select("id, email, portal_auth_user_id, portal_linked_at")
+    .eq("id", tenantId)
+    .eq("user_id", userId)
+    .maybeSingle();
+}
 
 async function getLinkedTenant() {
   const supabase = await createClient();
@@ -117,13 +142,16 @@ export async function acceptTenantPortalInvite(
 
   const trimmed = token.trim();
   if (!trimmed) {
-    return { success: false, error: "Invite link is invalid." };
+    return { success: false, error: "Portal access link is invalid." };
   }
 
   const supabase = await createClient();
   const user = await getServerUser(supabase);
   if (!user) {
-    return { success: false, error: "Sign in first, then open your invite link again." };
+    return {
+      success: false,
+      error: "Sign in first, then open your portal access link again.",
+    };
   }
 
   const { data: invite, error: inviteError } = await supabase
@@ -142,17 +170,25 @@ export async function acceptTenantPortalInvite(
   }
 
   if (!invite) {
-    return { success: false, error: "Invite not found or already used." };
+    return {
+      success: false,
+      error:
+        "Portal access link not found. Ask your landlord to copy the link from your tenant profile.",
+    };
   }
 
   if (invite.accepted_at) {
-    return { success: false, error: "This invite was already accepted." };
-  }
-
-  if (new Date(invite.expires_at) < new Date()) {
     return {
       success: false,
-      error: "This invite has expired. Ask your landlord for a new link.",
+      error: "This portal is already set up. Sign in at /portal with your account.",
+    };
+  }
+
+  if (invite.expires_at && new Date(invite.expires_at) < new Date()) {
+    return {
+      success: false,
+      error:
+        "This access link has expired. Ask your landlord to reset portal access and send a new link.",
     };
   }
 
@@ -194,6 +230,24 @@ export async function acceptTenantPortalInvite(
     return { success: true, data: rowToPortalTenant(row) };
   }
 
+  const { data: existingPortalTenant, error: existingLinkError } = await supabase
+    .from("tenants")
+    .select("id, name")
+    .eq("portal_auth_user_id", user.id)
+    .neq("id", invite.tenant_id)
+    .maybeSingle();
+
+  if (existingLinkError) {
+    return { success: false, error: existingLinkError.message };
+  }
+
+  if (existingPortalTenant) {
+    return {
+      success: false,
+      error: `This login is already linked to ${existingPortalTenant.name}. Use a different email or account for this tenant.`,
+    };
+  }
+
   const tenantEmail = row.email?.trim().toLowerCase();
   const userEmail = user.email?.trim().toLowerCase();
   if (tenantEmail && userEmail && tenantEmail !== userEmail) {
@@ -214,7 +268,15 @@ export async function acceptTenantPortalInvite(
     .single();
 
   if (tenantError || !tenantRow) {
-    return { success: false, error: tenantError?.message ?? "Could not link account." };
+    const message = tenantError?.message ?? "Could not link account.";
+    if (message.includes("tenants_portal_auth_user_id_uniq")) {
+      return {
+        success: false,
+        error:
+          "This login is already linked to another tenant. Use a different email or account for this tenant.",
+      };
+    }
+    return { success: false, error: message };
   }
 
   const { error: inviteUpdateError } = await supabase
@@ -232,9 +294,9 @@ export async function acceptTenantPortalInvite(
   return { success: true, data: rowToPortalTenant(tenantRow as TenantRowWithPortal) };
 }
 
-export async function createTenantPortalInvite(
+export async function getTenantPortalAccessStatus(
   tenantId: string,
-): Promise<ActionResult<{ url: string; expiresAt: string }>> {
+): Promise<ActionResult<TenantPortalAccessStatus>> {
   if (!isSupabaseConfigured()) {
     return { success: false, error: "Supabase is not configured." };
   }
@@ -245,12 +307,11 @@ export async function createTenantPortalInvite(
     return { success: false, error: "Not authenticated." };
   }
 
-  const { data: tenant, error: tenantError } = await supabase
-    .from("tenants")
-    .select("id, email")
-    .eq("id", tenantId)
-    .eq("user_id", user.id)
-    .maybeSingle();
+  const { data: tenant, error: tenantError } = await getLandlordTenant(
+    supabase,
+    tenantId,
+    user.id,
+  );
 
   if (tenantError) {
     return { success: false, error: tenantError.message };
@@ -260,37 +321,216 @@ export async function createTenantPortalInvite(
     return { success: false, error: "Tenant not found." };
   }
 
+  if (tenant.portal_auth_user_id) {
+    return {
+      success: true,
+      data: {
+        state: "active",
+        accessUrl: null,
+        expiresAt: null,
+        linkedAt: tenant.portal_linked_at ?? null,
+      },
+    };
+  }
+
+  if (!tenant.email?.trim()) {
+    return {
+      success: true,
+      data: {
+        state: "not_enabled",
+        accessUrl: null,
+        expiresAt: null,
+        linkedAt: null,
+      },
+    };
+  }
+
+  const { data: pendingInvite, error: inviteError } = await supabase
+    .from("tenant_portal_invites")
+    .select("token, expires_at")
+    .eq("tenant_id", tenantId)
+    .is("accepted_at", null)
+    .maybeSingle();
+
+  if (inviteError) {
+    return {
+      success: false,
+      error: inviteError.message.includes("tenant_portal_invites")
+        ? "Run supabase/migrations/20250516090000_tenant_portal.sql in Supabase."
+        : inviteError.message,
+    };
+  }
+
+  if (pendingInvite) {
+    return {
+      success: true,
+      data: {
+        state: "pending",
+        accessUrl: portalAccessUrl(pendingInvite.token),
+        expiresAt: pendingInvite.expires_at,
+        linkedAt: null,
+      },
+    };
+  }
+
+  return {
+    success: true,
+    data: {
+      state: "not_enabled",
+      accessUrl: null,
+      expiresAt: null,
+      linkedAt: null,
+    },
+  };
+}
+
+export async function resetTenantPortalAccess(
+  tenantId: string,
+): Promise<ActionResult<void>> {
+  if (!isSupabaseConfigured()) {
+    return { success: false, error: "Supabase is not configured." };
+  }
+
+  const supabase = await createClient();
+  const user = await getServerUser(supabase);
+  if (!user) {
+    return { success: false, error: "Not authenticated." };
+  }
+
+  const { data: tenant, error: tenantError } = await getLandlordTenant(
+    supabase,
+    tenantId,
+    user.id,
+  );
+
+  if (tenantError) {
+    return { success: false, error: tenantError.message };
+  }
+
+  if (!tenant) {
+    return { success: false, error: "Tenant not found." };
+  }
+
+  const { error: inviteDeleteError } = await supabase
+    .from("tenant_portal_invites")
+    .delete()
+    .eq("tenant_id", tenantId);
+
+  if (inviteDeleteError) {
+    return { success: false, error: inviteDeleteError.message };
+  }
+
+  const { error: unlinkError } = await supabase
+    .from("tenants")
+    .update({
+      portal_auth_user_id: null,
+      portal_linked_at: null,
+    })
+    .eq("id", tenantId)
+    .eq("user_id", user.id);
+
+  if (unlinkError) {
+    return { success: false, error: unlinkError.message };
+  }
+
+  revalidatePath("/tenants");
+  revalidatePath("/portal");
+
+  return { success: true, data: undefined };
+}
+
+export async function createTenantPortalInvite(
+  tenantId: string,
+): Promise<ActionResult<{ url: string; expiresAt: string | null }>> {
+  if (!isSupabaseConfigured()) {
+    return { success: false, error: "Supabase is not configured." };
+  }
+
+  const supabase = await createClient();
+  const user = await getServerUser(supabase);
+  if (!user) {
+    return { success: false, error: "Not authenticated." };
+  }
+
+  const { data: tenant, error: tenantError } = await getLandlordTenant(
+    supabase,
+    tenantId,
+    user.id,
+  );
+
+  if (tenantError) {
+    return { success: false, error: tenantError.message };
+  }
+
+  if (!tenant) {
+    return { success: false, error: "Tenant not found." };
+  }
+
+  if (tenant.portal_auth_user_id) {
+    return {
+      success: false,
+      error: "Portal is already active for this tenant. They sign in at /portal.",
+    };
+  }
+
   if (!tenant.email?.trim()) {
     return {
       success: false,
-      error: "Add the tenant's email before sending a portal invite.",
+      error: "Add the tenant's email before enabling portal access.",
+    };
+  }
+
+  const { data: pendingInvite, error: pendingError } = await supabase
+    .from("tenant_portal_invites")
+    .select("id, token, expires_at")
+    .eq("tenant_id", tenantId)
+    .is("accepted_at", null)
+    .maybeSingle();
+
+  if (pendingError) {
+    return {
+      success: false,
+      error: pendingError.message.includes("tenant_portal_invites")
+        ? "Run supabase/migrations/20250516110000_tenant_portal_stable_access.sql in Supabase."
+        : pendingError.message,
+    };
+  }
+
+  if (pendingInvite) {
+    return {
+      success: true,
+      data: {
+        url: portalAccessUrl(pendingInvite.token),
+        expiresAt: pendingInvite.expires_at,
+      },
     };
   }
 
   const token = crypto.randomUUID().replace(/-/g, "");
-  const expiresAt = inviteExpiresAt();
-
-  await supabase.from("tenant_portal_invites").delete().eq("tenant_id", tenantId);
 
   const { error: insertError } = await supabase.from("tenant_portal_invites").insert({
     tenant_id: tenantId,
     landlord_user_id: user.id,
     token,
-    expires_at: expiresAt,
+    expires_at: null,
   });
 
   if (insertError) {
     return {
       success: false,
       error: insertError.message.includes("tenant_portal_invites")
-        ? "Run supabase/migrations/20250516090000_tenant_portal.sql in Supabase."
+        ? "Run supabase/migrations/20250516110000_tenant_portal_stable_access.sql in Supabase."
         : insertError.message,
     };
   }
 
-  const url = `${getAppUrl()}/portal/accept?token=${token}`;
-
-  return { success: true, data: { url, expiresAt } };
+  return {
+    success: true,
+    data: {
+      url: portalAccessUrl(token),
+      expiresAt: null,
+    },
+  };
 }
 
 export async function submitPortalMaintenanceRequest(input: {

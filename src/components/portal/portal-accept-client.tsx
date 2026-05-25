@@ -46,7 +46,9 @@ export function PortalAcceptClient({ token }: PortalAcceptClientProps) {
         }
 
         setStatus("done");
-        setMessage(`Welcome, ${result.data.name}. Your portal is ready.`);
+        setMessage(
+          `Welcome, ${result.data.name}. Your portal is linked — sign in at /portal anytime.`,
+        );
       });
     }
 
@@ -59,7 +61,7 @@ export function PortalAcceptClient({ token }: PortalAcceptClientProps) {
 
   return (
     <section className="rounded-lg border border-zinc-200 bg-white p-6 shadow-sm">
-      <h1 className="text-lg font-semibold text-zinc-900">Tenant portal invite</h1>
+      <h1 className="text-lg font-semibold text-zinc-900">Set up tenant portal</h1>
 
       {status === "checking" || status === "accepting" ? (
         <p className="mt-3 text-sm text-zinc-600">Linking your account…</p>
@@ -67,12 +69,15 @@ export function PortalAcceptClient({ token }: PortalAcceptClientProps) {
 
       {status === "needs_auth" ? (
         <div className="mt-3 space-y-3 text-sm text-zinc-600">
-          <p>Sign in or create an account with the email your landlord has on file, then return here.</p>
+          <p>
+            Sign in or create an account with the email your landlord has on file, then open
+            this link again to link your portal permanently.
+          </p>
           <Link
             href={loginHref}
             className="inline-flex rounded-md bg-zinc-900 px-4 py-2.5 font-medium text-white hover:bg-zinc-800"
           >
-            Sign in to accept invite
+            Sign in or create account
           </Link>
         </div>
       ) : null}
@@ -92,7 +97,9 @@ export function PortalAcceptClient({ token }: PortalAcceptClientProps) {
       {status === "error" ? (
         <div className="mt-3 space-y-3 text-sm text-red-600" role="alert">
           <p>{message ?? "Could not accept this invite."}</p>
-          {message?.includes("already accepted") || message?.includes("already linked") ? (
+          {message?.includes("already set up") ||
+          message?.includes("already linked") ||
+          message?.includes("already linked to") ? (
             <Link
               href="/portal"
               className="inline-flex rounded-md border border-zinc-200 px-4 py-2.5 font-medium text-zinc-800 hover:bg-zinc-50"
