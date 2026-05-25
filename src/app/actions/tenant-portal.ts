@@ -72,6 +72,43 @@ export type PortalInvitePreview = {
   tenantEmail: string | null;
 };
 
+type PortalInviteByTokenRow = {
+  invite_id: string;
+  tenant_id: string;
+  tenant_name: string;
+  tenant_email: string | null;
+  landlord_user_id: string;
+  expires_at: string | null;
+  accepted_at: string | null;
+};
+
+const PORTAL_INVITE_RPC_MIGRATION =
+  "Run supabase/migrations/20250516210000_portal_invite_by_token_rpc.sql in Supabase.";
+
+const PORTAL_INVITE_NOT_FOUND =
+  "Portal access link not found or already used. Ask your landlord to copy a fresh link from the tenant profile (Enable portal access).";
+
+async function fetchPortalInviteByToken(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  token: string,
+) {
+  const { data, error } = await supabase.rpc("get_tenant_portal_invite_by_token", {
+    p_token: token,
+  });
+
+  if (error) {
+    const needsRpc = error.message.includes("get_tenant_portal_invite_by_token");
+    return {
+      invite: null as PortalInviteByTokenRow | null,
+      error: needsRpc ? PORTAL_INVITE_RPC_MIGRATION : error.message,
+    };
+  }
+
+  const rows = data as PortalInviteByTokenRow[] | null;
+  const invite = rows?.[0] ?? null;
+  return { invite, error: null as string | null };
+}
+
 export async function getPortalInvitePreview(
   token: string,
 ): Promise<ActionResult<PortalInvitePreview>> {
@@ -85,40 +122,22 @@ export async function getPortalInvitePreview(
   }
 
   const supabase = await createClient();
-  const { data: invite, error: inviteError } = await supabase
-    .from("tenant_portal_invites")
-    .select("tenant_id, expires_at, accepted_at")
-    .eq("token", trimmed)
-    .maybeSingle();
+  const { invite, error } = await fetchPortalInviteByToken(supabase, trimmed);
 
-  if (inviteError || !invite) {
-    return { success: false, error: "Portal access link not found." };
+  if (error) {
+    return { success: false, error };
   }
 
-  if (invite.accepted_at) {
-    return { success: false, error: "This portal is already set up." };
-  }
-
-  if (invite.expires_at && new Date(invite.expires_at) < new Date()) {
-    return { success: false, error: "This access link has expired." };
-  }
-
-  const { data: tenant, error: tenantError } = await supabase
-    .from("tenants")
-    .select("id, name, email")
-    .eq("id", invite.tenant_id)
-    .maybeSingle();
-
-  if (tenantError || !tenant) {
-    return { success: false, error: "Tenant record not found." };
+  if (!invite) {
+    return { success: false, error: PORTAL_INVITE_NOT_FOUND };
   }
 
   return {
     success: true,
     data: {
-      tenantId: tenant.id,
-      tenantName: tenant.name,
-      tenantEmail: tenant.email,
+      tenantId: invite.tenant_id,
+      tenantName: invite.tenant_name,
+      tenantEmail: invite.tenant_email,
     },
   };
 }
@@ -273,43 +292,25 @@ export async function acceptTenantPortalInvite(
     };
   }
 
-  const { data: invite, error: inviteError } = await supabase
-    .from("tenant_portal_invites")
-    .select("id, tenant_id, expires_at, accepted_at")
-    .eq("token", trimmed)
-    .maybeSingle();
+  const { invite: inviteRow, error: inviteLookupError } = await fetchPortalInviteByToken(
+    supabase,
+    trimmed,
+  );
 
-  if (inviteError) {
-    return {
-      success: false,
-      error: inviteError.message.includes("tenant_portal_invites")
-        ? "Run supabase/migrations/20250516090000_tenant_portal.sql in Supabase."
-        : inviteError.message,
-    };
+  if (inviteLookupError) {
+    return { success: false, error: inviteLookupError };
   }
 
-  if (!invite) {
-    return {
-      success: false,
-      error:
-        "Portal access link not found. Ask your landlord to copy the link from your tenant profile.",
-    };
+  if (!inviteRow) {
+    return { success: false, error: PORTAL_INVITE_NOT_FOUND };
   }
 
-  if (invite.accepted_at) {
-    return {
-      success: false,
-      error: "This portal is already set up. Sign in at /portal with your account.",
-    };
-  }
-
-  if (invite.expires_at && new Date(invite.expires_at) < new Date()) {
-    return {
-      success: false,
-      error:
-        "This access link has expired. Ask your landlord to reset portal access and send a new link.",
-    };
-  }
+  const invite = {
+    id: inviteRow.invite_id,
+    tenant_id: inviteRow.tenant_id,
+    expires_at: inviteRow.expires_at,
+    accepted_at: inviteRow.accepted_at,
+  };
 
   const { data: tenantBeforeLink, error: tenantReadError } = await supabase
     .from("tenants")

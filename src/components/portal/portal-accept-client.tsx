@@ -28,6 +28,13 @@ export function PortalAcceptClient({ token }: PortalAcceptClientProps) {
     let cancelled = false;
 
     async function run() {
+      const supabase = createClient();
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+
+      if (cancelled) return;
+
       const preview = await getPortalInvitePreview(token);
       if (cancelled) return;
 
@@ -38,13 +45,6 @@ export function PortalAcceptClient({ token }: PortalAcceptClientProps) {
       }
 
       setTenantName(preview.data.tenantName);
-
-      const supabase = createClient();
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
-
-      if (cancelled) return;
 
       if (!user) {
         setStatus("needs_auth");
