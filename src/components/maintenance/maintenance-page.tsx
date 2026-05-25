@@ -47,7 +47,11 @@ export function MaintenancePageClient({
 
       <section className="grid gap-6 lg:grid-cols-[minmax(0,360px)_1fr]">
         <MaintenanceForm properties={properties} onCreated={handleCreated} />
-        <MaintenanceList requests={requests} onUpdated={handleUpdated} />
+        <MaintenanceList
+          requests={requests}
+          properties={properties}
+          onUpdated={handleUpdated}
+        />
       </section>
     </>
   );

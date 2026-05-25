@@ -6,23 +6,30 @@ import { PropertyForm } from "@/components/properties/property-form";
 import { PropertyList } from "@/components/properties/property-list";
 import { hasDevBypass } from "@/lib/dev-bypass";
 import {
+  PROPERTY_ADDRESS_SELECT,
   PROPERTY_WITH_UNITS_SELECT,
   rowToProperty,
   type PropertyRow,
 } from "@/lib/properties";
+import { rowToMaintenance, type MaintenanceRow } from "@/lib/maintenance";
 import { createClient } from "@/lib/supabase/client";
-import type { Property } from "@/types";
+import type { MaintenanceRequest, Property } from "@/types";
 
 type PropertiesPageProps = {
   initialProperties: Property[];
+  initialResolvedMaintenance: MaintenanceRequest[];
   loadError: string | null;
 };
 
 export function PropertiesPage({
   initialProperties,
+  initialResolvedMaintenance,
   loadError,
 }: PropertiesPageProps) {
   const [properties, setProperties] = useState(initialProperties);
+  const [resolvedMaintenance, setResolvedMaintenance] = useState(
+    initialResolvedMaintenance,
+  );
   const [clientLoadError, setClientLoadError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -44,23 +51,35 @@ export function PropertiesPage({
         return;
       }
 
-      const { data, error } = await supabase
-        .from("properties")
-        .select(PROPERTY_WITH_UNITS_SELECT)
-        .order("created_at", { ascending: false });
+      const [propertiesResult, maintenanceResult] = await Promise.all([
+        supabase
+          .from("properties")
+          .select(PROPERTY_WITH_UNITS_SELECT)
+          .order("created_at", { ascending: false }),
+        supabase
+          .from("maintenance_requests")
+          .select(`*, properties(${PROPERTY_ADDRESS_SELECT})`)
+          .eq("status", "resolved")
+          .order("resolved_at", { ascending: false }),
+      ]);
 
       if (cancelled) return;
 
-      if (error) {
-        setClientLoadError(error.message);
+      if (propertiesResult.error) {
+        setClientLoadError(propertiesResult.error.message);
         return;
       }
 
       setClientLoadError(null);
       setProperties(
-        (data as PropertyRow[])
+        (propertiesResult.data as PropertyRow[])
           .filter((property) => !property.archived_at)
           .map(rowToProperty),
+      );
+      setResolvedMaintenance(
+        maintenanceResult.data
+          ? (maintenanceResult.data as MaintenanceRow[]).map(rowToMaintenance)
+          : [],
       );
     }
 
@@ -105,6 +124,7 @@ export function PropertiesPage({
         />
         <PropertyList
           properties={properties}
+          resolvedMaintenance={resolvedMaintenance}
           onDeleted={(id) =>
             setProperties((current) => current.filter((p) => p.id !== id))
           }

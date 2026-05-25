@@ -61,11 +61,13 @@ export type MaintenanceRequest = {
   id: string;
   propertyId: string;
   propertyAddress: string;
+  unitLabel: string | null;
   title: string;
   description: string | null;
   status: MaintenanceStatus;
   priority: MaintenancePriority;
   createdAt: string;
+  resolvedAt: string | null;
 };
 
 export type Tenant = {
