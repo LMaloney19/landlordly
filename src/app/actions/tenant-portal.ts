@@ -85,6 +85,43 @@ type PortalInviteByTokenRow = {
 const PORTAL_INVITE_RPC_MIGRATION =
   "Run supabase/migrations/20250516210000_portal_invite_by_token_rpc.sql in Supabase.";
 
+const PORTAL_ACCEPT_RPC_MIGRATION =
+  "Run supabase/migrations/20250516220000_portal_accept_invite_rpc.sql in Supabase.";
+
+type AcceptInviteRpcResult = {
+  ok: boolean;
+  code?: string;
+  tenant_id?: string;
+  tenant_name?: string;
+  tenant_email?: string;
+  other_name?: string;
+};
+
+function mapAcceptInviteRpcError(result: AcceptInviteRpcResult): string {
+  switch (result.code) {
+    case "not_authenticated":
+      return "Sign in first, then open your portal access link again.";
+    case "not_found":
+      return PORTAL_INVITE_NOT_FOUND;
+    case "already_accepted":
+      return "This portal is already set up. Sign in at /portal with your account.";
+    case "expired":
+      return "This access link has expired. Ask your landlord to reset portal access and send a new link.";
+    case "landlord_account":
+      return `This link is for tenant ${result.tenant_name ?? "this tenant"}. You are signed in as the landlord — sign out, then have them open the link with their own account (or use incognito).`;
+    case "tenant_other_account":
+      return "This tenant is already linked to another portal account.";
+    case "user_linked_other":
+      return `This login is already linked to ${result.other_name}'s portal. To set up ${result.tenant_name ?? "this tenant"}, sign out, then sign in with ${result.tenant_email ?? "the email on this tenant record"} (or create a new account).`;
+    case "email_conflict":
+      return `${result.tenant_name ?? "This tenant"} shares an email with another tenant on file. Each tenant needs a unique email — ask your landlord to update the tenant profile.`;
+    case "email_mismatch":
+      return `Sign in with ${result.tenant_email} — that is the email your landlord has on file for this tenant.`;
+    default:
+      return "Could not link portal account.";
+  }
+}
+
 const PORTAL_INVITE_NOT_FOUND =
   "Portal access link not found or already used. Ask your landlord to copy a fresh link from the tenant profile (Enable portal access).";
 
@@ -292,140 +329,38 @@ export async function acceptTenantPortalInvite(
     };
   }
 
-  const { invite: inviteRow, error: inviteLookupError } = await fetchPortalInviteByToken(
-    supabase,
-    trimmed,
+  const { data: acceptData, error: acceptError } = await supabase.rpc(
+    "accept_tenant_portal_invite_by_token",
+    { p_token: trimmed },
   );
 
-  if (inviteLookupError) {
-    return { success: false, error: inviteLookupError };
-  }
-
-  if (!inviteRow) {
-    return { success: false, error: PORTAL_INVITE_NOT_FOUND };
-  }
-
-  const invite = {
-    id: inviteRow.invite_id,
-    tenant_id: inviteRow.tenant_id,
-    expires_at: inviteRow.expires_at,
-    accepted_at: inviteRow.accepted_at,
-  };
-
-  const { data: tenantBeforeLink, error: tenantReadError } = await supabase
-    .from("tenants")
-    .select(TENANT_SELECT_PORTAL)
-    .eq("id", invite.tenant_id)
-    .maybeSingle();
-
-  if (tenantReadError) {
-    return { success: false, error: tenantReadError.message };
-  }
-
-  if (!tenantBeforeLink) {
-    return { success: false, error: "Tenant record not found." };
-  }
-
-  const row = tenantBeforeLink as TenantRowWithPortal;
-
-  if (user.id === row.user_id) {
+  if (acceptError) {
     return {
       success: false,
-      error: `This link is for tenant ${row.name}. You are signed in as the landlord — sign out, then have ${row.name} open the link with their own account (or use incognito).`,
+      error: acceptError.message.includes("accept_tenant_portal_invite_by_token")
+        ? PORTAL_ACCEPT_RPC_MIGRATION
+        : acceptError.message,
     };
   }
 
-  if (row.portal_auth_user_id && row.portal_auth_user_id !== user.id) {
-    return {
-      success: false,
-      error: "This tenant is already linked to another portal account.",
-    };
+  const acceptResult = acceptData as AcceptInviteRpcResult;
+  if (!acceptResult?.ok) {
+    return { success: false, error: mapAcceptInviteRpcError(acceptResult) };
   }
 
-  if (row.portal_auth_user_id === user.id) {
-    const { error: inviteUpdateError } = await supabase
-      .from("tenant_portal_invites")
-      .update({ accepted_at: new Date().toISOString() })
-      .eq("id", invite.id);
-
-    if (inviteUpdateError) {
-      return { success: false, error: inviteUpdateError.message };
-    }
-
-    revalidatePath("/portal");
-    revalidatePath("/tenants");
-    return { success: true, data: rowToPortalTenant(row) };
-  }
-
-  const { data: existingPortalTenant, error: existingLinkError } = await supabase
-    .from("tenants")
-    .select("id, name")
-    .eq("portal_auth_user_id", user.id)
-    .neq("id", invite.tenant_id)
-    .maybeSingle();
-
-  if (existingLinkError) {
-    return { success: false, error: existingLinkError.message };
-  }
-
-  if (existingPortalTenant) {
-    return {
-      success: false,
-      error: `This login is already linked to ${existingPortalTenant.name}'s portal. To set up ${row.name}, sign out, then sign in with ${row.email ?? "the email on this tenant record"} (or create a new account).`,
-    };
-  }
-
-  const emailConflict = await findOtherTenantWithSameEmail(
-    supabase,
-    row.user_id,
-    row.id,
-    row.email ?? "",
-  );
-  if (emailConflict) {
-    return {
-      success: false,
-      error: `${row.name} shares the same email as ${emailConflict.name}. Each tenant needs a unique email for portal access — update the email on the tenant profile first.`,
-    };
-  }
-
-  const tenantEmail = normalizeEmail(row.email);
-  const userEmail = normalizeEmail(user.email);
-  if (tenantEmail && userEmail && tenantEmail !== userEmail) {
-    return {
-      success: false,
-      error: `Sign in with ${row.email} — that is the email your landlord has on file for this tenant.`,
-    };
+  const tenantId = acceptResult.tenant_id;
+  if (!tenantId) {
+    return { success: false, error: "Could not link portal account." };
   }
 
   const { data: tenantRow, error: tenantError } = await supabase
     .from("tenants")
-    .update({
-      portal_auth_user_id: user.id,
-      portal_linked_at: new Date().toISOString(),
-    })
-    .eq("id", invite.tenant_id)
     .select(TENANT_SELECT_PORTAL)
+    .eq("id", tenantId)
     .single();
 
   if (tenantError || !tenantRow) {
-    const message = tenantError?.message ?? "Could not link account.";
-    if (message.includes("tenants_portal_auth_user_id_uniq")) {
-      return {
-        success: false,
-        error:
-          "This login is already linked to another tenant. Use a different email or account for this tenant.",
-      };
-    }
-    return { success: false, error: message };
-  }
-
-  const { error: inviteUpdateError } = await supabase
-    .from("tenant_portal_invites")
-    .update({ accepted_at: new Date().toISOString() })
-    .eq("id", invite.id);
-
-  if (inviteUpdateError) {
-    return { success: false, error: inviteUpdateError.message };
+    return { success: false, error: tenantError?.message ?? "Tenant record not found." };
   }
 
   revalidatePath("/portal");
