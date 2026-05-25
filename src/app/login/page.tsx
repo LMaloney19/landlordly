@@ -11,6 +11,8 @@ type LoginPageProps = {
 export default async function LoginPage({ searchParams }: LoginPageProps) {
   const { redirect: redirectTo, error: authError } = await searchParams;
   const destination = safeRedirectPath(redirectTo);
+  const isPortalFlow =
+    destination.startsWith("/portal") || destination.includes("/portal/");
 
   return (
     <div className="flex min-h-screen items-center justify-center bg-zinc-50 px-4">
@@ -23,7 +25,9 @@ export default async function LoginPage({ searchParams }: LoginPageProps) {
             Landlordly
           </h1>
           <p className="mt-1 text-sm text-zinc-500">
-            Sign in to manage your properties
+            {isPortalFlow
+              ? "Sign in or create an account to open your tenant portal"
+              : "Sign in to manage your properties"}
           </p>
         </header>
         <LoginForm redirectTo={destination} initialError={authError ?? null} />

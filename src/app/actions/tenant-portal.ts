@@ -156,6 +156,53 @@ export async function acceptTenantPortalInvite(
     };
   }
 
+  const { data: tenantBeforeLink, error: tenantReadError } = await supabase
+    .from("tenants")
+    .select(TENANT_SELECT_PORTAL)
+    .eq("id", invite.tenant_id)
+    .maybeSingle();
+
+  if (tenantReadError) {
+    return { success: false, error: tenantReadError.message };
+  }
+
+  if (!tenantBeforeLink) {
+    return { success: false, error: "Tenant record not found." };
+  }
+
+  const row = tenantBeforeLink as TenantRowWithPortal;
+
+  if (row.portal_auth_user_id && row.portal_auth_user_id !== user.id) {
+    return {
+      success: false,
+      error: "This tenant is already linked to another portal account.",
+    };
+  }
+
+  if (row.portal_auth_user_id === user.id) {
+    const { error: inviteUpdateError } = await supabase
+      .from("tenant_portal_invites")
+      .update({ accepted_at: new Date().toISOString() })
+      .eq("id", invite.id);
+
+    if (inviteUpdateError) {
+      return { success: false, error: inviteUpdateError.message };
+    }
+
+    revalidatePath("/portal");
+    revalidatePath("/tenants");
+    return { success: true, data: rowToPortalTenant(row) };
+  }
+
+  const tenantEmail = row.email?.trim().toLowerCase();
+  const userEmail = user.email?.trim().toLowerCase();
+  if (tenantEmail && userEmail && tenantEmail !== userEmail) {
+    return {
+      success: false,
+      error: `Sign in with ${row.email} — that is the email your landlord has on file for this tenant.`,
+    };
+  }
+
   const { data: tenantRow, error: tenantError } = await supabase
     .from("tenants")
     .update({
@@ -170,10 +217,14 @@ export async function acceptTenantPortalInvite(
     return { success: false, error: tenantError?.message ?? "Could not link account." };
   }
 
-  await supabase
+  const { error: inviteUpdateError } = await supabase
     .from("tenant_portal_invites")
     .update({ accepted_at: new Date().toISOString() })
     .eq("id", invite.id);
+
+  if (inviteUpdateError) {
+    return { success: false, error: inviteUpdateError.message };
+  }
 
   revalidatePath("/portal");
   revalidatePath("/tenants");

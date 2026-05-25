@@ -90,9 +90,17 @@ export function PortalAcceptClient({ token }: PortalAcceptClientProps) {
       ) : null}
 
       {status === "error" ? (
-        <p className="mt-3 text-sm text-red-600" role="alert">
-          {message ?? "Could not accept this invite."}
-        </p>
+        <div className="mt-3 space-y-3 text-sm text-red-600" role="alert">
+          <p>{message ?? "Could not accept this invite."}</p>
+          {message?.includes("already accepted") || message?.includes("already linked") ? (
+            <Link
+              href="/portal"
+              className="inline-flex rounded-md border border-zinc-200 px-4 py-2.5 font-medium text-zinc-800 hover:bg-zinc-50"
+            >
+              Go to portal
+            </Link>
+          ) : null}
+        </div>
       ) : null}
     </section>
   );
