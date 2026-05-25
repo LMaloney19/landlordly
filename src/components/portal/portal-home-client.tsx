@@ -63,7 +63,8 @@ export function PortalHomeClient({
     event.preventDefault();
     setMaintenanceError(null);
 
-    const formData = new FormData(event.currentTarget);
+    const form = event.currentTarget;
+    const formData = new FormData(form);
     const title = String(formData.get("title") ?? "");
     const description = String(formData.get("description") ?? "");
     const priority = String(formData.get("priority") ?? "medium") as MaintenancePriority;
@@ -80,7 +81,7 @@ export function PortalHomeClient({
         return;
       }
 
-      event.currentTarget.reset();
+      form.reset();
       setData((current) =>
         current
           ? {
@@ -96,7 +97,8 @@ export function PortalHomeClient({
     event.preventDefault();
     setRentError(null);
 
-    const formData = new FormData(event.currentTarget);
+    const form = event.currentTarget;
+    const formData = new FormData(form);
     const amount = Number(formData.get("amount"));
     const paidAt = String(formData.get("paidAt") ?? "");
     const notes = String(formData.get("notes") ?? "");
@@ -109,8 +111,8 @@ export function PortalHomeClient({
         return;
       }
 
-      event.currentTarget.reset();
-      const paidField = event.currentTarget.elements.namedItem("paidAt") as HTMLInputElement | null;
+      form.reset();
+      const paidField = form.elements.namedItem("paidAt") as HTMLInputElement | null;
       if (paidField) paidField.value = todayIso();
 
       setData((current) =>
@@ -296,7 +298,8 @@ function PortalMaintenanceList({ items }: { items: MaintenanceRequest[] }) {
             <li key={item.id} className="py-3 text-sm">
               <p className="font-medium text-zinc-900">{item.title}</p>
               <p className="mt-1 text-zinc-500">
-                {STATUS_LABELS[item.status]} · {PRIORITY_LABELS[item.priority]}
+                {STATUS_LABELS[item.status] ?? item.status} ·{" "}
+                {PRIORITY_LABELS[item.priority] ?? item.priority}
               </p>
             </li>
           ))}
