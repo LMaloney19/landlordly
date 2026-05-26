@@ -3,10 +3,10 @@
 import { useState, useTransition, type FormEvent } from "react";
 import {
   getPortalHomeData,
-  reportPortalRentPayment,
   submitPortalMaintenanceRequest,
   type PortalHomeData,
 } from "@/app/actions/tenant-portal";
+import { PortalRentPay } from "@/components/portal/portal-rent-pay";
 import { PRIORITY_LABELS, STATUS_LABELS } from "@/lib/maintenance";
 import { formatCurrency } from "@/lib/utils";
 import type { MaintenancePriority, MaintenanceRequest, RentPayment } from "@/types";
@@ -15,14 +15,9 @@ type PortalHomeClientProps = {
   initial: PortalHomeData | null;
   initialError: string | null;
   needsLink: boolean;
+  stripeEnabled: boolean;
+  checkoutNotice?: "success" | "cancelled" | null;
 };
-
-const inputClass =
-  "mt-1.5 w-full rounded-md border border-zinc-200 bg-white px-3 py-2 text-sm focus:border-zinc-400 focus:outline-none focus:ring-2 focus:ring-zinc-200";
-
-function todayIso() {
-  return new Date().toISOString().slice(0, 10);
-}
 
 function formatDate(isoDate: string) {
   return new Date(isoDate + "T00:00:00").toLocaleDateString("en-US", {
@@ -32,17 +27,20 @@ function formatDate(isoDate: string) {
   });
 }
 
+const inputClass =
+  "mt-1.5 w-full rounded-md border border-zinc-200 bg-white px-3 py-2 text-sm focus:border-zinc-400 focus:outline-none focus:ring-2 focus:ring-zinc-200";
+
 export function PortalHomeClient({
   initial,
   initialError,
   needsLink,
+  stripeEnabled,
+  checkoutNotice = null,
 }: PortalHomeClientProps) {
   const [data, setData] = useState<PortalHomeData | null>(initial);
   const [pageError, setPageError] = useState(initialError);
   const [maintenanceError, setMaintenanceError] = useState<string | null>(null);
-  const [rentError, setRentError] = useState<string | null>(null);
   const [maintenancePending, startMaintenanceTransition] = useTransition();
-  const [rentPending, startRentTransition] = useTransition();
   const [refreshPending, startRefreshTransition] = useTransition();
 
   const tenant = data?.tenant;
@@ -93,39 +91,6 @@ export function PortalHomeClient({
     });
   }
 
-  function handleRentSubmit(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    setRentError(null);
-
-    const form = event.currentTarget;
-    const formData = new FormData(form);
-    const amount = Number(formData.get("amount"));
-    const paidAt = String(formData.get("paidAt") ?? "");
-    const notes = String(formData.get("notes") ?? "");
-
-    startRentTransition(async () => {
-      const result = await reportPortalRentPayment({ amount, paidAt, notes });
-
-      if (!result.success) {
-        setRentError(result.error);
-        return;
-      }
-
-      form.reset();
-      const paidField = form.elements.namedItem("paidAt") as HTMLInputElement | null;
-      if (paidField) paidField.value = todayIso();
-
-      setData((current) =>
-        current
-          ? {
-              ...current,
-              recentPayments: [result.data, ...current.recentPayments].slice(0, 6),
-            }
-          : current,
-      );
-    });
-  }
-
   if (needsLink) {
     return (
       <section className="rounded-lg border border-amber-200 bg-amber-50 p-6 text-sm text-amber-900">
@@ -146,9 +111,6 @@ export function PortalHomeClient({
     );
   }
 
-  const defaultRentAmount =
-    tenant.monthlyRent && tenant.monthlyRent > 0 ? String(tenant.monthlyRent) : "";
-
   return (
     <div className="space-y-8">
       <header>
@@ -166,6 +128,29 @@ export function PortalHomeClient({
         ) : null}
       </header>
 
+      {checkoutNotice === "success" ? (
+        <p
+          className="rounded-md border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800"
+          role="status"
+        >
+          Payment received — it may take a few seconds to appear below.{" "}
+          <button
+            type="button"
+            onClick={refreshHome}
+            disabled={refreshPending}
+            className="font-medium underline"
+          >
+            Refresh
+          </button>
+        </p>
+      ) : null}
+
+      {checkoutNotice === "cancelled" ? (
+        <p className="rounded-md border border-zinc-200 bg-zinc-50 px-4 py-3 text-sm text-zinc-600">
+          Checkout cancelled. You can pay rent anytime from this page.
+        </p>
+      ) : null}
+
       {pageError ? (
         <p className="rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800" role="alert">
           {pageError}
@@ -181,53 +166,7 @@ export function PortalHomeClient({
       ) : null}
 
       <section className="grid gap-6 md:grid-cols-2">
-        <article className="rounded-lg border border-zinc-200 bg-white p-6 shadow-sm">
-          <h2 className="text-sm font-semibold text-zinc-900">Report a payment</h2>
-          <p className="mt-1 text-sm text-zinc-500">
-            Tell your landlord when you paid rent. They will see it on the Rent page and
-            dashboard alerts update automatically.
-          </p>
-          <form className="mt-4 space-y-4" onSubmit={handleRentSubmit}>
-            <label className="block text-sm font-medium text-zinc-700">
-              Amount
-              <input
-                type="number"
-                name="amount"
-                required
-                min={0.01}
-                step="0.01"
-                defaultValue={defaultRentAmount}
-                className={inputClass}
-              />
-            </label>
-            <label className="block text-sm font-medium text-zinc-700">
-              Date paid
-              <input
-                type="date"
-                name="paidAt"
-                required
-                defaultValue={todayIso()}
-                className={inputClass}
-              />
-            </label>
-            <label className="block text-sm font-medium text-zinc-700">
-              Notes (optional)
-              <input type="text" name="notes" className={inputClass} placeholder="Check #1024, Zelle, etc." />
-            </label>
-            {rentError ? (
-              <p className="text-sm text-red-600" role="alert">
-                {rentError}
-              </p>
-            ) : null}
-            <button
-              type="submit"
-              disabled={rentPending}
-              className="w-full rounded-md bg-zinc-900 px-4 py-2.5 text-sm font-medium text-white hover:bg-zinc-800 disabled:opacity-60"
-            >
-              {rentPending ? "Saving…" : "Submit payment"}
-            </button>
-          </form>
-        </article>
+        <PortalRentPay monthlyRent={tenant.monthlyRent} stripeEnabled={stripeEnabled} />
 
         <article className="rounded-lg border border-zinc-200 bg-white p-6 shadow-sm">
           <h2 className="text-sm font-semibold text-zinc-900">Maintenance request</h2>
@@ -324,8 +263,10 @@ function PortalPaymentsList({ items }: { items: RentPayment[] }) {
                 <p className="mt-0.5 text-zinc-500">{formatDate(payment.paidAt)}</p>
                 {payment.notes ? <p className="mt-1 text-zinc-600">{payment.notes}</p> : null}
               </div>
-              {payment.source === "tenant_portal" ? (
-                <span className="text-xs text-emerald-700">You reported</span>
+              {payment.source === "stripe" ? (
+                <span className="text-xs text-emerald-700">Paid online</span>
+              ) : payment.source === "tenant_portal" ? (
+                <span className="text-xs text-zinc-500">Reported</span>
               ) : null}
             </li>
           ))}

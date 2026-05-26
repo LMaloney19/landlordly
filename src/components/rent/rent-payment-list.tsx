@@ -1,4 +1,5 @@
 import type { RentPayment } from "@/types";
+import { rentPaymentSourceLabel } from "@/lib/rent-payment-source";
 import { formatCurrency } from "@/lib/utils";
 
 type RentPaymentListProps = {
@@ -45,6 +46,9 @@ export function RentPaymentList({ payments }: RentPaymentListProps) {
               </p>
               <p className="mt-0.5 text-sm text-zinc-500">
                 {formatPaidDate(payment.paidAt)}
+                {payment.source && payment.source !== "landlord"
+                  ? ` · ${rentPaymentSourceLabel(payment.source)}`
+                  : ""}
                 {payment.notes ? ` · ${payment.notes}` : ""}
               </p>
             </section>

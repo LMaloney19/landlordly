@@ -556,7 +556,11 @@ export function TenantProfileClient({ tenantId }: TenantProfileClientProps) {
                     ) : null}
                   </div>
                   <span className="text-xs text-zinc-500">
-                    {payment.source === "tenant_portal" ? "Tenant portal" : "Paid"}
+                    {payment.source === "stripe"
+                      ? "Paid online"
+                      : payment.source === "tenant_portal"
+                        ? "Tenant portal"
+                        : "Paid"}
                   </span>
                 </li>
               ))}

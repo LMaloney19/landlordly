@@ -22,6 +22,17 @@ export function getSupabaseAnonKey(): string {
   );
 }
 
+export function getSupabaseServiceRoleKey(): string {
+  return (
+    process.env.SUPABASE_SERVICE_ROLE_KEY?.trim().replace(/^["']|["']$/g, "") ??
+    ""
+  );
+}
+
 export function isSupabaseConfigured() {
   return Boolean(getSupabaseUrl() && getSupabaseAnonKey());
+}
+
+export function isSupabaseAdminConfigured() {
+  return Boolean(getSupabaseUrl() && getSupabaseServiceRoleKey());
 }
